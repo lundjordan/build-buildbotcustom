@@ -1360,8 +1360,8 @@ def generateBranchObjects(config, name, secrets=None):
     for platform in enabled_platforms:
         # shorthand
         pf = config['platforms'][platform]
-        # TODO need to impl l10n, try, valgrind, xulrunnner, etc
-        # builders still.
+
+        # TODO need to impl l10n, try, valgrind, xulrunnner, etc builders
         # For now, let's just record when we create a generic, pgo, and nightly
         # builder via mozharness and fall back to buildbot for other
         # builder logic  (outside this mozharness_config condition)
@@ -1369,13 +1369,17 @@ def generateBranchObjects(config, name, secrets=None):
         done_creating_pgo_build = False
         done_creating_nightly_build = False
 
-        if 'mozharness_config' in pf:
-            # again, let's seperate the existing mozharn config builds from new
-            # desktop mozharness
-            is_spider_build = any(name in pf['base_name']
-                                  for name in ['linux64-br-haz', 'linux64-sh-haz'])
-            is_b2g_build = 'b2g' in pf['product_name']
+        # let's seperate the existing mozharn config builds from new
+        # desktop mozharness
+        is_spider_build = any(name in pf['base_name']
+                              for name in ['linux64-br-haz', 'linux64-sh-haz'])
+        is_b2g_build = 'b2g' in pf['product_name']
+        is_desktop_mozharn_build = config.get(
+            'enable_mozharness_desktop_builds'
+        )
 
+        if ((is_spider_build or is_b2g_build or
+                is_desktop_mozharn_build) and 'mozharness_config' in pf):
             # so spider/b2g have their own naming convention defined at the
             # start of generateBranchObjects. Let's keep that for now and use
             # the existing builder names for the FF desktop variants
@@ -1388,7 +1392,10 @@ def generateBranchObjects(config, name, secrets=None):
                 # for b2g/spider builds we currently have this logic:
                 # pf.get('enable_nightly', False)
                 enable_nightly_by_default = False
-            else:  # this is a desktop FF build
+            else: # is_desktop_mozharn_build
+                print "XXX: %s" % name
+                # this is a desktop FF build on a branch and platform that
+                # supports it
                 builder_name = '%s build' % pf['base_name']
                 builder_dir = '%s-%s' % (name, platform)
                 nightly_builder_name = '%s nightly' % pf['base_name']
