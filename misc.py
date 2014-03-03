@@ -1380,6 +1380,10 @@ def generateBranchObjects(config, name, secrets=None):
 
         if ((is_spider_build or is_b2g_build or
                 is_desktop_mozharn_build) and 'mozharness_config' in pf):
+            generic_extra_args = []
+            nightly_extra_args = []
+            pgo_extra_args = []
+            triggered_schedulers_for_nightlies = []
             # so spider/b2g have their own naming convention defined at the
             # start of generateBranchObjects. Let's keep that for now and use
             # the existing builder names for the FF desktop variants
@@ -1393,7 +1397,6 @@ def generateBranchObjects(config, name, secrets=None):
                 # pf.get('enable_nightly', False)
                 enable_nightly_by_default = False
             else: # is_desktop_mozharn_build
-                print "XXX: %s" % name
                 # this is a desktop FF build on a branch and platform that
                 # supports it
                 builder_name = '%s build' % pf['base_name']
@@ -1405,6 +1408,26 @@ def generateBranchObjects(config, name, secrets=None):
                 # for desktop builds we currently have this logic:
                 # pf.get('enable_nightly', True)
                 enable_nightly_by_default = True
+                # treat nightly as pgo builds if platform in pgo_platforms
+                generic_extra_args.extend(['--branch', name])
+                if config.get('staging'):
+                    # this condition will be met for 'preproduction' as well
+                    # but IIUC, that is dead and we will not be supporting it
+                    #  in mozharness desktop builds. Instead, let's use
+                    # staging items for preprod as well
+                    generic_extra_args.extend(['--build-pool', 'staging'])
+                else:  # this is production
+                    generic_extra_args.extend(['--build-pool', 'production'])
+                nightly_extra_args.extend(generic_extra_args)
+                pgo_extra_args.extend(generic_extra_args)
+                if platform in config['pgo_platforms']:
+                    nightly_extra_args.append('--enable-pgo')
+                    pgo_extra_args.append('--enable-pgo')
+                if config['enable_l10n'] and platform in config['l10n_platforms'] and \
+                                nightly_builder_name in l10nNightlyBuilders:
+                    triggered_schedulers_for_nightlies = [
+                        l10nNightlyBuilders[nightly_builder_name]['l10n_builder']]
+
 
             # this is ugly but it needs to be here for now until we do try
             # builds through mozharness
@@ -1412,7 +1435,7 @@ def generateBranchObjects(config, name, secrets=None):
                 if 'mozharness_repo_url' in pf:
                     config['mozharness_repo_url'] = pf['mozharness_repo_url']
                 factory = makeMHFactory(config, pf, signingServers=secrets.get(
-                    pf.get('dep_signing_servers')))
+                    pf.get('dep_signing_servers')), extra_args=generic_extra_args)
                 builder = {
                     'name': builder_name,
                     'slavenames': pf['slaves'],
@@ -1450,19 +1473,9 @@ def generateBranchObjects(config, name, secrets=None):
                     do_nightly = pf.get('enable_nightly', enable_nightly_by_default)
 
                 if do_nightly:
-                    nightly_extra_args = []
-                    triggered_schedulers = None
-                    # treat nightly as pgo builds if platform in pgo_platforms
-                    if platform in config['pgo_platforms']:
-                        nightly_extra_args.append('--enable-pgo')
-                    if config['enable_l10n'] and platform in config['l10n_platforms'] and \
-                            nightly_builder_name in l10nNightlyBuilders:
-                        triggered_schedulers = [
-                            l10nNightlyBuilders[nightly_builder_name]['l10n_builder']]
-
                     factory = makeMHFactory(config, pf, signingServers=secrets.get(
                         pf.get('nightly_signing_servers')), extra_args=nightly_extra_args,
-                        triggered_schedulers=triggered_schedulers
+                        triggered_schedulers=triggered_schedulers_for_nightlies
                     )
 
                     nightly_builder = {
@@ -1484,7 +1497,7 @@ def generateBranchObjects(config, name, secrets=None):
                 if config['pgo_strategy'] in ('periodic', 'try') and \
                         platform in config['pgo_platforms']:
                     pgo_factory = makeMHFactory(config, pf, signingServers=secrets.get(
-                        pf.get('dep_signing_servers')), extra_args=['--enable-pgo'])
+                        pf.get('dep_signing_servers')), extra_args=pgo_extra_args)
                     pgo_builder = {
                         'name': '%s pgo-build' % pf['base_name'],
                         'slavenames': pf['slaves'],
@@ -1501,9 +1514,10 @@ def generateBranchObjects(config, name, secrets=None):
             # end of mozharness build variants.
             if (is_spider_build or is_b2g_build):
                 continue  # for these pf's we don't need any more builders
-            # else:
+            else:
                 # For now, let's continue below and see what builders
                 # remain in desktop build world
+                pass
 
         # The stage platform needs to be used by the factory __init__ methods
         # as well as the log handler status target.  Instead of repurposing the

@@ -6563,9 +6563,6 @@ class ScriptFactory(RequestSortingBuildFactory):
         ))
 
         if self.triggered_schedulers:
-            # XXX pass for now
-            # for triggered_scheduler in self.triggered_schedulers:
-            #     print "XXX triggered_scheduler: %s" % str(triggered_scheduler)
             # for triggered_scheduler in self.triggered_schedulers:
             #     self.addStep(Trigger(
             #         schedulerNames=[triggered_scheduler],
