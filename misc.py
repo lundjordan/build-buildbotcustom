@@ -1417,6 +1417,7 @@ def generateBranchObjects(config, name, secrets=None):
                     # staging items for preprod as well
                     generic_extra_args.extend(['--build-pool', 'staging'])
                 else:  # this is production
+                    print "XXX WHOA WE SHOULDN'T BE HERE FROM DEV STAGING"
                     generic_extra_args.extend(['--build-pool', 'production'])
                 nightly_extra_args.extend(generic_extra_args)
                 pgo_extra_args.extend(generic_extra_args)
@@ -1699,7 +1700,7 @@ def generateBranchObjects(config, name, secrets=None):
                                'product': pf['stage_product'],
                                'slavebuilddir': normalizeName('%s-%s' % (name, platform), pf['stage_product'])},
             }
-            # XXX TEMP CODE. This condition just checks to see if we used
+            # TEMP CODE. This condition just checks to see if we used
             # mozharness to create this builder already. Once we port all
             # builders to mozharness we won't need mozilla2_dep_builder at
             # all
@@ -1730,7 +1731,7 @@ def generateBranchObjects(config, name, secrets=None):
                                    'product': pf['stage_product'],
                                    'slavebuilddir': normalizeName('%s-%s-pgo' % (name, platform), pf['stage_product'])},
                 }
-                # XXX TEMP CODE. This condition just checks to see if we used
+                # TEMP CODE. This condition just checks to see if we used
                 # mozharness to create this builder already. Once we port all
                 # builders to mozharness we won't need pgo_builder at
                 # all
@@ -2005,7 +2006,7 @@ def generateBranchObjects(config, name, secrets=None):
                                'nightly_build': True,
                                'slavebuilddir': normalizeName('%s-%s-nightly' % (name, platform), pf['stage_product'])},
             }
-            # XXX TEMP CODE. This condition just checks to see if we used
+            # TEMP CODE. This condition just checks to see if we used
             # mozharness to create this builder already. Once we port all
             # builders to mozharness we won't need mozilla2_nightly_builder at
             # all

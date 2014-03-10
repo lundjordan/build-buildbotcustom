@@ -6563,12 +6563,12 @@ class ScriptFactory(RequestSortingBuildFactory):
         ))
 
         if self.triggered_schedulers:
-            # for triggered_scheduler in self.triggered_schedulers:
-            #     self.addStep(Trigger(
-            #         schedulerNames=[triggered_scheduler],
-            #         copy_properties=['buildid', 'builduid'],
-            #         waitForFinish=False))
-            pass
+            for triggered_scheduler in self.triggered_schedulers:
+                self.addStep(Trigger(
+                    schedulerNames=[triggered_scheduler],
+                    copy_properties=['buildid', 'builduid'],
+                    waitForFinish=False)
+                )
 
     def reboot(self):
         def do_disconnect(cmd):
