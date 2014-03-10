@@ -1374,9 +1374,11 @@ def generateBranchObjects(config, name, secrets=None):
         is_spider_build = any(name in pf['base_name']
                               for name in ['linux64-br-haz', 'linux64-sh-haz'])
         is_b2g_build = 'b2g' in pf['product_name']
-        is_desktop_mozharn_build = config.get(
-            'enable_mozharness_desktop_builds'
-        )
+        # is_desktop_mozharn_build = config.get(
+        #     'enable_mozharness_desktop_builds'
+        # )
+        # XXX FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS ON ALL
+        is_desktop_mozharn_build = True
 
         if ((is_spider_build or is_b2g_build or
                 is_desktop_mozharn_build) and 'mozharness_config' in pf):
