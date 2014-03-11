@@ -1046,14 +1046,11 @@ def generateBranchObjects(config, name, secrets=None):
         pf = config['platforms'][platform]
         base_name = pf['base_name']
 
-        # now that we have FF desktop builds through mozharness, we need
-        # to check that the 'mozharness_config' is specifically
-        # for b2g and spider builds. For FF desktop, let's leave the remaining
-        # logic in this loop for genereting build names.
-        is_spider_build = any(name in pf['base_name']
-                              for name in ['linux64-br-haz', 'linux64-sh-haz'])
-        is_b2g_build = 'b2g' in pf['product_name']
-        if 'mozharness_config' in pf and (is_spider_build or is_b2g_build):
+        # now that we have FF desktop builds through mozharness, we need to
+        # figure out if we are doing a FF desktop mozharness build for this
+        # job or not. For FF desktop, let's not modify the buildernames like
+        # we do for other mozharn builds (b2g, spider, etc)
+        if 'mozharness_config' in pf and not pf['has_desktop_mozharness_build']:
             if pf.get('enable_dep', True):
                 buildername = '%s_dep' % pf['base_name']
                 builders.append(buildername)
@@ -1372,19 +1369,20 @@ def generateBranchObjects(config, name, secrets=None):
         done_creating_pgo_build = False
         done_creating_nightly_build = False
 
-        # let's seperate the existing mozharn config builds from new
-        # desktop mozharness
-        is_spider_build = any(name in pf['base_name']
-                              for name in ['linux64-br-haz', 'linux64-sh-haz'])
-        is_b2g_build = 'b2g' in pf['product_name']
-        # is_desktop_mozharn_build = config.get(
-        #     'enable_mozharness_desktop_builds'
-        # )
-        # XXX FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS ON ALL
-        is_desktop_mozharn_build = True
+        # let's seperate the existing mozharn config builds from new ff
+        # desktop mozharness builds
+        continue_with_mozharness_build = True
+        # we use this condition to enable/disable on a per platform basis
+        if pf['has_desktop_mozharness_build']:
+            # we use this condition to enable/disable on a per branch basis
+            if not config.get('desktop_mozharness_builds_enabled'):
+                continue_with_mozharness_build = False
 
-        if ((is_spider_build or is_b2g_build or
-                is_desktop_mozharn_build) and 'mozharness_config' in pf):
+                # XXX JLUND FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS
+                # ON ALL BRANCHES
+                continue_with_mozharness_build = True
+
+        if 'mozharness_config' in pf and continue_with_mozharness_build:
             generic_extra_args = []
             nightly_extra_args = []
             pgo_extra_args = []
@@ -1392,18 +1390,9 @@ def generateBranchObjects(config, name, secrets=None):
             # so spider/b2g have their own naming convention defined at the
             # start of generateBranchObjects. Let's keep that for now and use
             # the existing builder names for the FF desktop variants
-            if (is_spider_build or is_b2g_build):
-                builder_name = builder_dir = '%s_dep' % pf['base_name']
-                nightly_builder_name = '%s_nightly' % pf['base_name']
-                nightly_build_dir = nightly_builder_name
-                # mozharness spider builds are done in try so allow those
-                allow_mh_try_builds = True
-                # for b2g/spider builds we currently have this logic:
-                # pf.get('enable_nightly', False)
-                enable_nightly_by_default = False
-            else: # is_desktop_mozharn_build
-                # this is a desktop FF build on a branch and platform that
-                # supports it
+            if pf['has_desktop_mozharness_build']:
+                # this is a desktop FF build. It's on a branch and platform
+                # that supports it
                 builder_name = '%s build' % pf['base_name']
                 builder_dir = '%s-%s' % (name, platform)
                 nightly_builder_name = '%s nightly' % pf['base_name']
@@ -1422,7 +1411,8 @@ def generateBranchObjects(config, name, secrets=None):
                     # staging items for preprod as well
                     generic_extra_args.extend(['--build-pool', 'staging'])
                 else:  # this is production
-                    print "XXX WHOA WE SHOULDN'T BE HERE FROM DEV STAGING"
+                    print "XXX JLUND WHOA WE SHOULDN'T BE HERE FROM DEV " \
+                          "STAGING"
                     generic_extra_args.extend(['--build-pool', 'production'])
                 nightly_extra_args.extend(generic_extra_args)
                 pgo_extra_args.extend(generic_extra_args)
@@ -1433,6 +1423,15 @@ def generateBranchObjects(config, name, secrets=None):
                                 nightly_builder_name in l10nNightlyBuilders:
                     triggered_schedulers_for_nightlies = [
                         l10nNightlyBuilders[nightly_builder_name]['l10n_builder']]
+            else:  # eg: spider, b2g builds
+                builder_name = builder_dir = '%s_dep' % pf['base_name']
+                nightly_builder_name = '%s_nightly' % pf['base_name']
+                nightly_build_dir = nightly_builder_name
+                # mozharness spider builds are done in try so allow those
+                allow_mh_try_builds = True
+                # for b2g/spider builds we currently have this logic:
+                # pf.get('enable_nightly', False)
+                enable_nightly_by_default = False
 
 
             # this is ugly but it needs to be here for now until we do try
@@ -1518,7 +1517,7 @@ def generateBranchObjects(config, name, secrets=None):
                     branchObjects['builders'].append(pgo_builder)
                     done_creating_pgo_build = True
             # end of mozharness build variants.
-            if (is_spider_build or is_b2g_build):
+            if not pf['has_desktop_mozharness_build']:
                 continue  # for these pf's we don't need any more builders
             else:
                 # For now, let's continue below and see what builders
