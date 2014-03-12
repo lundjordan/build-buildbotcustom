@@ -1050,7 +1050,7 @@ def generateBranchObjects(config, name, secrets=None):
         # figure out if we are doing a FF desktop mozharness build for this
         # job or not. For FF desktop, let's not modify the buildernames like
         # we do for other mozharn builds (b2g, spider, etc)
-        if 'mozharness_config' in pf and not pf['has_desktop_mozharness_build']:
+        if 'mozharness_config' in pf and not pf.get('has_desktop_mozharness_build'):
             if pf.get('enable_dep', True):
                 buildername = '%s_dep' % pf['base_name']
                 builders.append(buildername)
@@ -1361,10 +1361,11 @@ def generateBranchObjects(config, name, secrets=None):
         # shorthand
         pf = config['platforms'][platform]
 
-        # TODO still need to impl try, valgrind, xulrunnner, etc builders
-        # For now, let's just record when we create a generic, pgo, nightly,
-        # etc builder via mozharness and fall back to buildbot for other
-        # builder factory logic  (outside this mozharness_config condition)
+        # TODO still need to impl mozharness desktop: try, valgrind, xulrunnner,
+        # etc builders
+        # For now, let's just record when we create builds like generic, pgo,
+        # and nightly via mozharness and fall back to buildbot for other
+        # builder factory logic  (outside the mozharness_config condition)
         # NOTE: when we no longer need to fall back for remaining builders,
         # we should extract the desktop mozharness builder logic out into
         # something like: generateDesktopMozharnessBuilders()
@@ -1373,18 +1374,20 @@ def generateBranchObjects(config, name, secrets=None):
         done_creating_nightly_build = False
         done_creating_nonunified_build = False
 
-        # let's seperate the existing mozharn config builds from new ff
-        # desktop mozharness builds
+        # we add continue_with_mozharness_build so we can control which builds
+        # go through mozharness and which though buildbot.
+        # Note, only desktop mozharness builds have this flexibility. The
+        # default is True
         continue_with_mozharness_build = True
         # we use this condition to enable/disable on a per platform basis
-        if pf['has_desktop_mozharness_build']:
+        if pf.get('has_desktop_mozharness_build'):
             # we use this condition to enable/disable on a per branch basis
             if not config.get('desktop_mozharness_builds_enabled'):
                 continue_with_mozharness_build = False
 
                 # XXX JLUND FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS
                 # ON ALL BRANCHES
-                continue_with_mozharness_build = True
+                # continue_with_mozharness_build = True
 
         if 'mozharness_config' in pf and continue_with_mozharness_build:
             generic_extra_args = []
@@ -1397,7 +1400,7 @@ def generateBranchObjects(config, name, secrets=None):
             # so spider/b2g have their own naming convention defined at the
             # start of generateBranchObjects. Let's keep that for now and use
             # the existing builder names for the FF desktop variants
-            if pf['has_desktop_mozharness_build']:
+            if pf.get('has_desktop_mozharness_build'):
                 # this is a desktop FF build. It's on a branch and platform
                 # that supports it
                 builder_name = '%s build' % pf['base_name']
@@ -1468,7 +1471,7 @@ def generateBranchObjects(config, name, secrets=None):
             # if this branch is 'try' and the mozharness builds run on try:
             if not config.get('enable_try') or allow_mh_try_builds:
                 factory = makeMHFactory(config, pf,
-                                        signingServers=signing_servers,
+                                        signingServers=dep_signing_servers,
                                         extra_args=generic_extra_args)
                 builder = {
                     'name': builder_name,
@@ -1493,7 +1496,7 @@ def generateBranchObjects(config, name, secrets=None):
                 # if we_do_non_unified_builds:
                 if pf.get('enable_nonunified_build'):
                     non_unified_factory = makeMHFactory(config, pf,
-                                            signingServers=signing_servers,
+                                            signingServers=dep_signing_servers,
                                             extra_args=nonunified_extra_args)
                     builder = {
                         'name': '%s non-unified' % builder_name,
@@ -1563,7 +1566,7 @@ def generateBranchObjects(config, name, secrets=None):
                     branchObjects['builders'].append(pgo_builder)
                     done_creating_pgo_build = True
             # end of mozharness build variants.
-            if not pf['has_desktop_mozharness_build']:
+            if not pf.get('has_desktop_mozharness_build'):
                 # outside of desktop mozharness builds, we have finished all
                 # the builders needed for this platform
                 continue
