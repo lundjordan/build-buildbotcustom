@@ -1523,10 +1523,12 @@ def generateBranchObjects(config, name, secrets=None):
                     nightly_signing_servers = secrets.get(
                         pf.get('nightly_signing_servers')
                     )
+                    # include use_credentials_file for balrog step
                     nightly_factory = makeMHFactory(
                         config, pf, signingServers=nightly_signing_servers,
                         extra_args=nightly_extra_args,
-                        triggered_schedulers=triggered_nightly_schedulers
+                        triggered_schedulers=triggered_nightly_schedulers,
+                        use_credentials_file=True,
                     )
                     nightly_builder = {
                         'name': nightly_builder_name,
