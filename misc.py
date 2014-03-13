@@ -1392,7 +1392,7 @@ def generateBranchObjects(config, name, secrets=None):
             generic_extra_args = []
             nightly_extra_args = []
             pgo_extra_args = []
-            nonunified_extra_args  = []
+            nonunified_extra_args = []
             triggered_nightly_schedulers = []
             if 'mozharness_repo_url' in pf:
                 config['mozharness_repo_url'] = pf['mozharness_repo_url']
@@ -1427,8 +1427,9 @@ def generateBranchObjects(config, name, secrets=None):
                 nonunified_extra_args = generic_extra_args + [
                     '--custom-build-variant-cfg', 'non-unified']
 
-                if config['enable_l10n'] and platform in config['l10n_platforms'] and \
-                                nightly_builder_name in l10nNightlyBuilders:
+                if (config['enable_l10n'] and
+                            platform in config['l10n_platforms'] and
+                            nightly_builder_name in l10nNightlyBuilders):
                     triggered_nightly_schedulers = [
                         l10nNightlyBuilders[nightly_builder_name]['l10n_builder']
                     ]
@@ -1501,9 +1502,10 @@ def generateBranchObjects(config, name, secrets=None):
                 # if we_do_non_unified_builds:
                 if (pf.get('enable_nonunified_build') and
                         pf.get('has_desktop_mozharness_build')):
-                    non_unified_factory = makeMHFactory(config, pf,
-                                            signingServers=dep_signing_servers,
-                                            extra_args=nonunified_extra_args)
+                    non_unified_factory = makeMHFactory(
+                        config, pf, signingServers=dep_signing_servers,
+                        extra_args=nonunified_extra_args
+                    )
                     builder = {
                         'name': '%s non-unified' % pf['base_name'],
                         'builddir': '%s-nonunified' % builder_dir,
@@ -1523,7 +1525,8 @@ def generateBranchObjects(config, name, secrets=None):
                 if config['enable_nightly']:
                     # if the platform supports nightlies (default to
                     # mozharness preference if enable_nightly does not exist):
-                    do_nightly = pf.get('enable_nightly', enable_nightly_by_default)
+                    do_nightly = pf.get('enable_nightly',
+                                        enable_nightly_by_default)
 
                 if do_nightly:
                     nightly_signing_servers = secrets.get(
@@ -1552,9 +1555,9 @@ def generateBranchObjects(config, name, secrets=None):
                     branchObjects['builders'].append(nightly_builder)
                     done_creating_nightly_build = True
 
-                # spider/b2g builds don't do PGO, But FF desktop mozharness builds
-                # can. Let's add those if pgo qualifies for this pf
-                # if we_do_pgo:
+                # spider/b2g builds don't do PGO, But FF desktop mozharness
+                # builds can. Let's add those if pgo qualifies for this pf if
+                #  we_do_pgo:
                 if config['pgo_strategy'] in ('periodic', 'try') and \
                         platform in config['pgo_platforms']:
                     pgo_factory = makeMHFactory(
