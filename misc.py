@@ -1387,7 +1387,7 @@ def generateBranchObjects(config, name, secrets=None):
 
                 # XXX JLUND FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS
                 # ON ALL BRANCHES
-                # continue_with_mozharness_build = True
+                continue_with_mozharness_build = True
 
         if 'mozharness_config' in pf and continue_with_mozharness_build:
             generic_extra_args = []
