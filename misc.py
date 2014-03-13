@@ -1385,6 +1385,9 @@ def generateBranchObjects(config, name, secrets=None):
             if not config.get('desktop_mozharness_builds_enabled'):
                 continue_with_mozharness_build = False
 
+                # XXX jlund short circuit for testing on all branches
+                continue_with_mozharness_build = True
+
         if 'mozharness_config' in pf and continue_with_mozharness_build:
             generic_extra_args = []
             nightly_extra_args = []
@@ -1496,12 +1499,13 @@ def generateBranchObjects(config, name, secrets=None):
                     branchObjects['builders'].append(builder)
 
                 # if we_do_non_unified_builds:
-                if pf.get('enable_nonunified_build'):
+                if (pf.get('enable_nonunified_build') and
+                        pf.get('has_desktop_mozharness_build')):
                     non_unified_factory = makeMHFactory(config, pf,
                                             signingServers=dep_signing_servers,
                                             extra_args=nonunified_extra_args)
                     builder = {
-                        'name': '%s non-unified' % builder_name,
+                        'name': '%s non-unified' % pf['base_name'],
                         'builddir': '%s-nonunified' % builder_dir,
                         'slavebuilddir': normalizeName(
                             '%s-nonunified' % builder_dir),
@@ -1800,7 +1804,6 @@ def generateBranchObjects(config, name, secrets=None):
                     branchObjects['builders'].append(pgo_builder)
 
             if pf.get('enable_nonunified_build'):
-                done_creating_nonunified_build = True
                 kwargs = factory_kwargs.copy()
                 kwargs['stagePlatform'] += '-nonunified'
                 kwargs['srcMozconfig'] = kwargs['srcMozconfig'] + '-nonunified'
