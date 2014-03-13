@@ -1385,10 +1385,6 @@ def generateBranchObjects(config, name, secrets=None):
             if not config.get('desktop_mozharness_builds_enabled'):
                 continue_with_mozharness_build = False
 
-                # XXX JLUND FOR DEV STAGING TMP ENABLE MOZHARN DESKTOP BUILDS
-                # ON ALL BRANCHES
-                continue_with_mozharness_build = True
-
         if 'mozharness_config' in pf and continue_with_mozharness_build:
             generic_extra_args = []
             nightly_extra_args = []
