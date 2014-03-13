@@ -1435,7 +1435,13 @@ def generateBranchObjects(config, name, secrets=None):
                     ]
                 # look mom, no buildbot properties needed for desktop
                 # mozharness builds!!
-                mh_build_properties = {}
+                mh_build_properties = {
+                    # our buildbot master.cfg requires us to at least have
+                    # these but mozharness doesn't need them
+                    'branch': name,
+                    'platform': platform,
+                    'product': pf['stage_product'],
+                }
             else:  # eg: spider, b2g builds
                 builder_name = builder_dir = '%s_dep' % pf['base_name']
                 nightly_builder_name = '%s_nightly' % pf['base_name']
