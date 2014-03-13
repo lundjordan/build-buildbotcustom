@@ -1515,7 +1515,7 @@ def generateBranchObjects(config, name, secrets=None):
                         'category': name,
                         'properties': mh_build_properties.copy(),
                     }
-                    branchObjects['builders'].append(non_unified_factory)
+                    branchObjects['builders'].append(builder)
                     done_creating_nonunified_build = True
 
                 do_nightly = False
