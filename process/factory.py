@@ -6582,7 +6582,6 @@ class ScriptFactory(RequestSortingBuildFactory):
 
         if self.triggered_schedulers:
             for triggered_scheduler in self.triggered_schedulers:
-                print "XXX JLUND:" + triggered_scheduler
                 self.addStep(Trigger(
                     schedulerNames=[triggered_scheduler],
                     copy_properties=['buildid', 'builduid'],

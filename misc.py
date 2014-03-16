@@ -709,8 +709,9 @@ def mergeBuildObjects(d1, d2):
     return retval
 
 
-def makeMHFactory(config, pf, **kwargs):
+def makeMHFactory(config, pf, extra_args=None, **kwargs):
     factory_class = ScriptFactory
+    mh_cfg = pf['mozharness_config']
     if 'signingServers' in kwargs:
         if kwargs['signingServers'] is not None:
             factory_class = SigningScriptFactory
@@ -722,19 +723,14 @@ def makeMHFactory(config, pf, **kwargs):
     if 'env' in pf:
         kwargs['env'] = pf['env'].copy()
 
-    mh_cfg = pf['mozharness_config']
-    # append extra_args to what was already there in mh_cfg.
-    # If extra_args doesn't exist in both mf_cfg and kwargs, let's make sure we
-    # pass None and not an empty list to factory_class
-    if kwargs.get('extra_args'):
-        kwargs['extra_args'] = mh_cfg.get('extra_args', []) + kwargs['extra_args']
-    else:
-        kwargs['extra_args'] = mh_cfg.get('extra_args', None)
+    if not extra_args:
+        extra_args = mh_cfg.get('extra_args')
 
     factory = factory_class(
         scriptRepo=scriptRepo,
         scriptName=mh_cfg['script_name'],
         reboot_command=mh_cfg.get('reboot_command'),
+        extra_args=extra_args,
         script_timeout=pf.get('timeout', 3600),
         script_maxtime=pf.get('maxTime', 4 * 3600),
         **kwargs
@@ -995,7 +991,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     pf = config['platforms'][platform]
 
     # let's grab the extra args that are defined at misc level
-    extra_args = ['--branch', name]
+    extra_args = pf['mozharness_config'].get('extra_args', [])
+    extra_args.extend(['--branch', name])
     if config.get('staging'):
         extra_args.extend(['--build-pool', 'staging'])
     else:  # this is production
@@ -1009,16 +1006,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     nonunified_extra_args = extra_args + config.get(
         'mozharness_desktop_extra_args')['non-unified']
 
-    # grab the l10n schedulers that nightlies will trigger (if any)
-    if (config['enable_l10n'] and platform in config['l10n_platforms'] and
-                nightly_builder_name in l10nNightlyBuilders):
-        triggered_nightly_schedulers = [
-            l10nNightlyBuilders[nightly_builder_name]['l10n_builder']
-        ]
-
-    builder_name = '%s build' % pf['base_name']
-    builder_dir = '%s-%s' % (name, platform)
-    nightly_builder_name = '%s nightly' % pf['base_name']
+    base_builder_dir = '%s-%s' % (name, platform)
     nightly_build_dir = '%s-%s-nightly' % (name, platform)
     # let's assign next_slave here so we only have to change it in
     # this location for mozharness builds if we swap it out again.
@@ -1036,14 +1024,22 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     dep_signing_servers = secrets.get(pf.get('dep_signing_servers'))
     nightly_signing_servers = secrets.get(pf.get('nightly_signing_servers'))
 
+    # grab the l10n schedulers that nightlies will trigger (if any)
+    triggered_nightly_schedulers = []
+    if (config['enable_l10n'] and platform in config['l10n_platforms'] and
+                '%s nightly' % pf['base_name'] in l10nNightlyBuilders):
+        triggered_nightly_schedulers = [
+            l10nNightlyBuilders['%s nightly' % pf['base_name']]['l10n_builder']
+        ]
+
     # if we do a generic dep build
     if pf.get('enable_dep', True):
         factory = makeMHFactory(config, pf, signingServers=dep_signing_servers,
                                 extra_args=extra_args)
         generic_builder = {
-            'name': builder_name,
-            'builddir': builder_dir,
-            'slavebuilddir': normalizeName(builder_dir),
+            'name': '%s build' % pf['base_name'],
+            'builddir': base_builder_dir,
+            'slavebuilddir': normalizeName(base_builder_dir),
             'slavenames': pf['slaves'],
             'nextSlave': next_slave,
             'factory': factory,
@@ -1060,9 +1056,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                                             extra_args=nonunified_extra_args)
         nonunified_builder = {
             'name': '%s non-unified' % pf['base_name'],
-            'builddir': '%s-nonunified' % builder_dir,
+            'builddir': '%s-nonunified' % base_builder_dir,
             'slavebuilddir': normalizeName(
-                '%s-nonunified' % builder_dir),
+                '%s-nonunified' % base_builder_dir),
             'slavenames': pf['slaves'],
             'nextSlave': next_slave,
             'factory': non_unified_factory,
@@ -1081,9 +1077,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                                         triggered_schedulers=triggered_nightly_schedulers,
                                         use_credentials_file=True)
         nightly_builder = {
-            'name': nightly_builder_name,
-            'builddir': nightly_build_dir,
-            'slavebuilddir': normalizeName(nightly_build_dir),
+            'name': '%s nightly' % pf['base_name'],
+            'builddir': '%s-nightly' % base_builder_dir,
+            'slavebuilddir': normalizeName('%s-nightly' % base_builder_dir),
             'slavenames': pf['slaves'],
             'nextSlave': next_slave,
             'factory': nightly_factory,
@@ -1101,9 +1097,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
             extra_args=pgo_extra_args
         )
         pgo_builder = {
-            'name': '%s pgo-build' % builder_name,
-            'builddir': '%s-pgo' % builder_dir,
-            'slavebuilddir': normalizeName('%s-pgo' % builder_dir),
+            'name': '%s pgo-build' % pf['base_name'],
+            'builddir': '%s-pgo' % base_builder_dir,
+            'slavebuilddir': normalizeName('%s-pgo' % base_builder_dir),
             'slavenames': pf['slaves'],
             'factory': pgo_factory,
             'category': name,
@@ -1181,8 +1177,8 @@ def generateBranchObjects(config, name, secrets=None):
         # figure out if we are doing a FF desktop mozharness build for this
         # job or not. For FF desktop, let's not modify the buildernames like
         # we do for other mozharn builds (b2g, spider, etc)
-        if ('mozharness_config' in pf and not
-                platform in config.get('mozharness_desktop_build_platforms')):
+        if ('mozharness_config' in pf and
+                platform not in config.get('mozharness_desktop_build_platforms')):
             if pf.get('enable_dep', True):
                 buildername = '%s_dep' % pf['base_name']
                 builders.append(buildername)
