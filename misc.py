@@ -980,21 +980,26 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     pf = config['platforms'][platform]
 
+    base_extra_args = pf['mozharness_config'].get('extra_args', [])
     # let's grab the extra args that are defined at misc level
-    extra_args = pf['mozharness_config'].get('extra_args', [])
-    extra_args.extend(['--branch', name])
+    branch_and_pool_args = []
+    branch_and_pool_args.extend(['--branch', name])
     if config.get('staging'):
-        extra_args.extend(['--build-pool', 'staging'])
+        branch_and_pool_args.extend(['--build-pool', 'staging'])
     else:  # this is production
-        extra_args.extend(['--build-pool', 'production'])
+        branch_and_pool_args.extend(['--build-pool', 'production'])
 
+    base_extra_args.extend(branch_and_pool_args)
     # now lets grab the extra args for the build types we define at misc level
-    nightly_extra_args = extra_args + config.get(
-        'mozharness_desktop_extra_args')['nightly']
-    pgo_extra_args = extra_args + config.get(
-        'mozharness_desktop_extra_args')['pgo']
-    nonunified_extra_args = extra_args + config.get(
-        'mozharness_desktop_extra_args')['non-unified']
+    nightly_extra_args = base_extra_args + config.get(
+        'mozharness_desktop_extra_options')['nightly']
+    pgo_extra_args = base_extra_args + config.get(
+        'mozharness_desktop_extra_options')['pgo']
+    # we need non_unified here since we can not create another platform in
+    # config.py for non-unified. This still allows us to still define what
+    # non-unifed looks like at a config.py level
+    non_unified_extra_args = pf.get("mozharness_non_unified_extra_args", [])
+    non_unified_extra_args.extend(branch_and_pool_args)
 
     base_builder_dir = '%s-%s' % (name, platform)
     nightly_build_dir = '%s-%s-nightly' % (name, platform)
@@ -1025,7 +1030,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     # if we do a generic dep build
     if pf.get('enable_dep', True):
         factory = makeMHFactory(config, pf, signingServers=dep_signing_servers,
-                                extra_args=extra_args)
+                                extra_args=base_extra_args)
         generic_builder = {
             'name': '%s build' % pf['base_name'],
             'builddir': base_builder_dir,
@@ -1040,10 +1045,11 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
         builds_created['done_generic_build'] = True
 
     # if we_do_non_unified_builds:
-    if pf.get('enable_nonunified_build'):
+    if (pf.get('enable_nonunified_build') and
+            pf.get("mozharness_non_unified_extra_args")):
         non_unified_factory = makeMHFactory(config, pf,
                                             signingServers=dep_signing_servers,
-                                            extra_args=nonunified_extra_args)
+                                            extra_args=non_unified_extra_args)
         nonunified_builder = {
             'name': '%s non-unified' % pf['base_name'],
             'builddir': '%s-nonunified' % base_builder_dir,
