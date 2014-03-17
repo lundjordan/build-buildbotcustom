@@ -983,7 +983,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     # first things first, make sure this is not on try
     if config.get('enable_try'):
         # let's return immediately and let MBF create all the builders
-        return builds_created
+        return desktop_mh_builders
 
     pf = config['platforms'][platform]
 
