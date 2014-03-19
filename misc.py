@@ -1734,7 +1734,8 @@ def generateBranchObjects(config, name, secrets=None):
                 'baseMirrorUrls': config.get('base_mirror_urls'),
                 'baseBundleUrls': config.get('base_bundle_urls'),
                 'mozillaDir': config.get('mozilla_dir', None),
-                'tooltool_manifest_src': pf.get('tooltool_manifest_src', None),
+                'tooltool_manifest_src': pf.get('tooltool_manifest_src'),
+                'tooltool_script': pf.get('tooltool_script'),
                 'tooltool_url_list': config.get('tooltool_url_list', []),
                 'gaiaRepo': pf.get('gaia_repo'),
                 'gaiaRevision': config.get('gaia_revision'),
@@ -1806,7 +1807,12 @@ def generateBranchObjects(config, name, secrets=None):
                                    'product': pf['stage_product'],
                                    'slavebuilddir': normalizeName('%s-%s-pgo' % (name, platform), pf['stage_product'])},
                 }
-                branchObjects['builders'].append(pgo_builder)
+                # TEMP CODE. This condition just checks to see if we used
+                # mozharness to create this builder already. Once we port all
+                # builders to mozharness we won't need pgo_builder at
+                # all
+                if not builder_tracker['done_pgo_build']:
+                    branchObjects['builders'].append(pgo_builder)
 
             # builder_tracker just checks to see if we used
             # mozharness to create this builder already. Once we port all
@@ -1836,7 +1842,11 @@ def generateBranchObjects(config, name, secrets=None):
                                    'product': pf['stage_product'],
                                    'slavebuilddir': normalizeName('%s-%s-nonunified' % (name, platform), pf['stage_product'])},
                 }
-                branchObjects['builders'].append(builder)
+                # TEMP CODE. This condition just checks to see if we used
+                # mozharness to create this builder already. Once we port all
+                # builders to mozharness we won't need this builder at all
+                if not builder_tracker['done_nonunified_build']:
+                    branchObjects['builders'].append(builder)
 
             if pf.get('enable_noprofiling_build'):
                 kwargs = factory_kwargs.copy()
@@ -2053,7 +2063,8 @@ def generateBranchObjects(config, name, secrets=None):
                     baseMirrorUrls=config.get('base_mirror_urls'),
                     baseBundleUrls=config.get('base_bundle_urls'),
                     mozillaDir=config.get('mozilla_dir', None),
-                    tooltool_manifest_src=pf.get('tooltool_manifest_src', None),
+                    tooltool_manifest_src=pf.get('tooltool_manifest_src'),
+                    tooltool_script=pf.get('tooltool_script'),
                     tooltool_url_list=config.get('tooltool_url_list', []),
                     gaiaRepo=pf.get('gaia_repo'),
                     gaiaRevision=config.get('gaia_revision'),
@@ -2335,7 +2346,8 @@ def generateBranchObjects(config, name, secrets=None):
                 buildsBeforeReboot=pf['builds_before_reboot'],
                 packageSDK=True,
                 signingServers=secrets.get(pf.get('nightly_signing_servers')),
-                tooltool_manifest_src=pf.get('tooltool_manifest_src', None),
+                tooltool_manifest_src=pf.get('tooltool_manifest_src'),
+                tooltool_script=pf.get('tooltool_script'),
                 tooltool_url_list=config.get('tooltool_url_list', []),
                 use_mock=pf.get('use_mock'),
                 mock_target=pf.get('mock_target'),
