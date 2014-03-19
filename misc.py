@@ -1807,12 +1807,7 @@ def generateBranchObjects(config, name, secrets=None):
                                    'product': pf['stage_product'],
                                    'slavebuilddir': normalizeName('%s-%s-pgo' % (name, platform), pf['stage_product'])},
                 }
-                # TEMP CODE. This condition just checks to see if we used
-                # mozharness to create this builder already. Once we port all
-                # builders to mozharness we won't need pgo_builder at
-                # all
-                if not builder_tracker['done_pgo_build']:
-                    branchObjects['builders'].append(pgo_builder)
+                branchObjects['builders'].append(pgo_builder)
 
             # builder_tracker just checks to see if we used
             # mozharness to create this builder already. Once we port all
@@ -1842,11 +1837,7 @@ def generateBranchObjects(config, name, secrets=None):
                                    'product': pf['stage_product'],
                                    'slavebuilddir': normalizeName('%s-%s-nonunified' % (name, platform), pf['stage_product'])},
                 }
-                # TEMP CODE. This condition just checks to see if we used
-                # mozharness to create this builder already. Once we port all
-                # builders to mozharness we won't need this builder at all
-                if not builder_tracker['done_nonunified_build']:
-                    branchObjects['builders'].append(builder)
+                branchObjects['builders'].append(builder)
 
             if pf.get('enable_noprofiling_build'):
                 kwargs = factory_kwargs.copy()
