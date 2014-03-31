@@ -980,10 +980,6 @@ def generateMozharnessTalosBuilder(platform, mozharness_repo, script_path,
 def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                                       l10nNightlyBuilders, builds_created):
     desktop_mh_builders = []
-    # first things first, make sure this is not on try
-    if config.get('enable_try'):
-        # let's return immediately and let MBF create all the builders
-        return desktop_mh_builders
 
     pf = config['platforms'][platform]
 
@@ -995,8 +991,16 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
         branch_and_pool_args.extend(['--build-pool', 'staging'])
     else:  # this is production
         branch_and_pool_args.extend(['--build-pool', 'production'])
-
     base_extra_args.extend(branch_and_pool_args)
+
+    # we need to pass who fired the change if this is on try
+    # for things like --tinderbox-build-dir in POST_UPLOAD_CMD
+    # Who will be in buildprops.json but we want to remove that dep
+    if name == 'try':
+        branch_and_pool_args.extend(
+            ['--who', WithProperties("%(who)s")]
+        )
+
     # now lets grab the extra args for the build types we define at misc level
     nightly_extra_args = base_extra_args + config.get(
         'mozharness_desktop_extra_options')['nightly']
