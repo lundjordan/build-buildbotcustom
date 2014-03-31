@@ -887,7 +887,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
         self.l10nCheckTest = l10nCheckTest
         self.tooltool_manifest_src = tooltool_manifest_src
         self.tooltool_url_list = tooltool_url_list or []
-        self.tooltool_script = tooltool_script or '/tools/tooltool.py'
+        self.tooltool_script = tooltool_script or ['/tools/tooltool.py']
         self.tooltool_bootstrap = tooltool_bootstrap
         self.gaiaRepo = gaiaRepo
         self.gaiaRepoUrl = "https://%s/%s" % (self.hgHost, self.gaiaRepo)
@@ -1155,9 +1155,9 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
         self.addPreBuildSteps()
         self.addSourceSteps()
         self.addConfigSteps()
-        self.addDoBuildSteps()
         if self.signingServers and self.enableSigning:
             self.addGetTokenSteps()
+        self.addDoBuildSteps()
         if self.doBuildAnalysis:
             self.addBuildAnalysisSteps()
         if self.doPostLinkerSize:
@@ -1331,16 +1331,19 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
                      command=['cat', '.mozconfig'],
                      ))
         if self.tooltool_manifest_src:
+            command=[
+                'sh',
+                WithProperties(
+                    '%(toolsdir)s/scripts/tooltool/tooltool_wrapper.sh'),
+                self.tooltool_manifest_src,
+                self.tooltool_url_list[0],
+                self.tooltool_bootstrap,
+            ]
+            if self.tooltool_script:
+                command.extend(self.tooltool_script)
             self.addStep(ShellCommand(
                 name='run_tooltool',
-                command=[
-                    WithProperties(
-                        '%(toolsdir)s/scripts/tooltool/fetch_and_unpack.sh'),
-                    self.tooltool_manifest_src,
-                    self.tooltool_url_list[0],
-                    self.tooltool_script,
-                    self.tooltool_bootstrap
-                ],
+                command=command,
                 haltOnFailure=True,
             ))
 
@@ -4081,7 +4084,8 @@ class ReleaseUpdatesFactory(ReleaseFactory):
                  testOlderPartials=False,
                  longVersion=None, schema=None,
                  useBetaChannelForRelease=False, useChecksums=False,
-                 promptWaitTime=None, **kwargs):
+                 promptWaitTime=None, balrog_api_root=None,
+                 balrog_credentials_file=None, balrog_username=None, **kwargs):
         """patcherConfig: The filename of the patcher config file to bump,
                           and pass to patcher.
            mozRepoPath: The path for the Mozilla repo to hand patcher as the
@@ -4125,6 +4129,9 @@ class ReleaseUpdatesFactory(ReleaseFactory):
         self.python = python
         self.configRepoPath = configRepoPath
         self.promptWaitTime = promptWaitTime
+        self.balrog_api_root = balrog_api_root
+        self.balrog_credentials_file = balrog_credentials_file
+        self.balrog_username = balrog_username
 
         # The patcher config bumper needs to know the exact previous version
         self.previousVersion = str(
@@ -4153,6 +4160,8 @@ class ReleaseUpdatesFactory(ReleaseFactory):
         if buildNumber >= 2:
             self.createBuildNSnippets()
         self.uploadSnippets()
+        if self.balrog_api_root:
+            self.submitBalrogUpdates()
         self.verifySnippets()
         self.trigger()
 
@@ -4398,6 +4407,39 @@ class ReleaseUpdatesFactory(ReleaseFactory):
                              description=['pushsnip'],
                              haltOnFailure=True
                              ))
+
+    def submitBalrogUpdates(self):
+        self.addStep(JSONPropertiesDownload(
+            name='download_balrog_props',
+            slavedest='buildprops_balrog.json',
+            workdir='.',
+            flunkOnFailure=False,
+        ))
+        credentials_file = os.path.join(os.getcwd(),
+                                        self.balrog_credentials_file)
+        target_file_name = os.path.basename(credentials_file)
+        self.addStep(FileDownload(
+            mastersrc=credentials_file,
+            slavedest=target_file_name,
+            workdir='.',
+            flunkOnFailure=False,
+        ))
+        cmd = [
+            self.python,
+            WithProperties('%(toolsdir)s/scripts/updates/balrog-release-pusher.py'),
+            '--build-properties', 'buildprops_balrog.json',
+            '--api-root', self.balrog_api_root,
+            '--buildbot-configs', self.getRepository(self.configRepoPath),
+            '--release-config', WithProperties('%(release_config)s'),
+            '--credentials-file', target_file_name,
+            '--username', self.balrog_username,
+        ]
+        self.addStep(RetryingShellCommand(
+            name='submit_balrog_updates',
+            command=cmd,
+            workdir='.',
+            flunkOnFailure=False,
+        ))
 
     def verifySnippets(self):
         channelComparisons = [(c, self.channels[c]['compareTo']) for c in self.channels if 'compareTo' in self.channels[c]]
