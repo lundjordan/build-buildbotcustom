@@ -679,6 +679,7 @@ def makeMHFactory(config, pf, extra_args=None, **kwargs):
 
     factory = factory_class(
         scriptRepo=scriptRepo,
+        interpreter=mh_cfg.get('mozharness_python'),
         scriptName=mh_cfg['script_name'],
         reboot_command=mh_cfg.get('reboot_command'),
         extra_args=extra_args,
