@@ -172,6 +172,7 @@ def postUploadCmdPrefix(upload_dir=None,
         cmd.extend(['--builddir', builddir])
     if to_tinderbox_dated:
         cmd.append('--release-to-tinderbox-dated-builds')
+        cmd.append('--release-to-latest-tinderbox-builds')
     if to_tinderbox_builds:
         cmd.append('--release-to-tinderbox-builds')
     if to_try:
@@ -5453,6 +5454,7 @@ class TalosFactory(RequestSortingBuildFactory):
         self.talos_from_source_code = talos_from_source_code
         self.credentialsFile = credentialsFile
 
+        self.talosCmd.append(WithProperties('%(configFile)s'))
         if datazillaUrl:
             self.talosCmd.extend(['--datazilla-url', datazillaUrl])
             self.talosCmd.extend(
@@ -5488,7 +5490,7 @@ class TalosFactory(RequestSortingBuildFactory):
         Return path to a python version that eithers has "simplejson" or
         it is 2.6 or higher (which includes the json module)
         '''
-        if (platform in ("fedora", "fedora64", "ubuntu32_hw", "ubuntu64_hw",
+        if (platform in ("ubuntu32_hw", "ubuntu64_hw",
                          "snowleopard", "lion", "mountainlion", "mavericks")):
             return "/tools/buildbot/bin/python"
         elif (platform in ('w764', 'win7', 'xp')):
@@ -5953,7 +5955,7 @@ class TalosFactory(RequestSortingBuildFactory):
     def addPluginInstallSteps(self):
         if self.plugins:
             # 32 bit (includes mac browsers)
-            if self.OS in ('xp', 'win7', 'fedora', 'ubuntu32_hw',
+            if self.OS in ('xp', 'win7', 'ubuntu32_hw',
                            'tegra_android', 'tegra_android-armv6',
                            'tegra_android-noion', 'panda_android',
                            'snowleopard', 'lion', 'mountainlion', 'mavericks',
@@ -5972,7 +5974,7 @@ class TalosFactory(RequestSortingBuildFactory):
                              haltOnFailure=True,
                              ))
             # 64 bit
-            if self.OS in ('w764', 'fedora64', 'ubuntu64_hw'):
+            if self.OS in ('w764', 'ubuntu64_hw'):
                 self.addStep(DownloadFile(
                              url=WithProperties(
                              "%s/%s" % (self.supportUrlBase, self.plugins['64'])),
@@ -6124,17 +6126,6 @@ class TalosFactory(RequestSortingBuildFactory):
                          log_eval_func=lambda c, s: SUCCESS,
                          ))
         else:
-            # the following step is to help the linux running on mac minis reboot cleanly
-            # see bug561442
-            if 'fedora' in self.OS:
-                self.addStep(ShellCommand(
-                    name='set_time',
-                    description=['set', 'time'],
-                    alwaysRun=True,
-                    command=['bash', '-c',
-                             'sudo hwclock --set --date="$(date +%m/%d/%y\ %H:%M:%S)"'],
-                ))
-
             self.addStep(DisconnectStep(
                          name='reboot',
                          flunkOnFailure=False,
@@ -6445,7 +6436,7 @@ class ScriptFactory(RequestSortingBuildFactory):
                  reboot_command=None, hg_bin='hg', platform=None,
                  use_mock=False, mock_target=None,
                  mock_packages=None, mock_copyin_files=None,
-                 triggered_schedulers=None, env={}):
+                 triggered_schedulers=None, env={}, copy_properties=None):
         BuildFactory.__init__(self)
         self.script_timeout = script_timeout
         self.log_eval_func = log_eval_func
@@ -6460,6 +6451,7 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.triggered_schedulers = triggered_schedulers
         self.env = env.copy()
         self.use_credentials_file = use_credentials_file
+        self.copy_properties = copy_properties or []
         if platform and 'win' in platform:
             self.get_basedir_cmd = ['cd']
         if scriptName[0] == '/':
@@ -6632,7 +6624,7 @@ class ScriptFactory(RequestSortingBuildFactory):
             for triggered_scheduler in self.triggered_schedulers:
                 self.addStep(Trigger(
                     schedulerNames=[triggered_scheduler],
-                    copy_properties=['buildid', 'builduid'],
+                    copy_properties=self.copy_properties,
                     waitForFinish=False)
                 )
 
