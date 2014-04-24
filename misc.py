@@ -455,6 +455,7 @@ class JacuzziAllocator(object):
             if my_available_slaves is None:
                 return func(builder, available_slaves)
             return func(builder, my_available_slaves)
+        _nextSlave.jacuzzi_enabled = True
         return _nextSlave
 
 J = JacuzziAllocator()
@@ -593,6 +594,7 @@ def _nextSlave(builder, available_slaves):
 
 
 @safeNextSlave
+@J
 def _nextSlave_skip_spot(builder, available_slaves):
     if available_slaves:
         no_spot_slaves = [s for s in available_slaves if not
@@ -608,6 +610,7 @@ def _nextIdleSlave(nReserved):
     """Return a nextSlave function that will only return a slave to run a build
     if there are at least nReserved slaves available."""
     @safeNextSlave
+    @J
     def _nextslave(builder, available_slaves):
         if len(available_slaves) <= nReserved:
             return None
@@ -1395,6 +1398,9 @@ def generateBranchObjects(config, name, secrets=None):
         branchObjects['schedulers'].append(nightly_scheduler)
 
     if len(periodicBuilders) > 0:
+        hour = config['periodic_start_hours']
+        minute = config.get('periodic_start_minute', 0)
+
         periodic_scheduler = makePropertiesScheduler(
             SpecificNightly,
             [buildIDSchedFunc, buildUIDSchedFunc])(
@@ -1403,7 +1409,8 @@ def generateBranchObjects(config, name, secrets=None):
                 name="%s periodic" % scheduler_name_prefix,
                 branch=config['repo_path'],
                 builderNames=periodicBuilders,
-                hour=range(0, 24, config['periodic_interval']),
+                hour=hour,
+                minute=minute,
             )
         branchObjects['schedulers'].append(periodic_scheduler)
 
@@ -3129,7 +3136,29 @@ def generateJetpackObjects(config, SLAVES):
     }
 
 
-def generateProjectObjects(project, config, SLAVES):
+def generateGaiaTryObjects(config, all_builders):
+    # Set up polling
+    assert all_builders
+    builder_names = [x['name'] for x in all_builders if 'gaia-try' in x['name']]
+    poller = HgPoller(
+        hgURL=config['hgurl'],
+        branch=config['repo_path'],
+        pollInterval=5 * 60,
+    )
+    # Set up scheduler
+    scheduler = Scheduler(
+        name="gaia-try",
+        branch=config['repo_path'],
+        treeStableTimer=None,
+        builderNames=builder_names,
+    )
+    return {
+        'change_source': [poller],
+        'schedulers': [scheduler],
+    }
+
+
+def generateProjectObjects(project, config, SLAVES, all_builders=None):
     builders = []
     schedulers = []
     change_sources = []
@@ -3156,6 +3185,11 @@ def generateProjectObjects(project, config, SLAVES):
         spiderMonkeyObjects = generateSpiderMonkeyObjects(
             project, config, SLAVES)
         buildObjects = mergeBuildObjects(buildObjects, spiderMonkeyObjects)
+
+    # Gaia-Try
+    elif project == "gaia-try":
+        gaiaTryObjects = generateGaiaTryObjects(config, all_builders)
+        buildObjects = mergeBuildObjects(buildObjects, gaiaTryObjects)
 
     return buildObjects
 
