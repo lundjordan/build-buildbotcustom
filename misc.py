@@ -580,7 +580,7 @@ def _nextAWSSlave(aws_wait=None, recentSort=False):
             return None
     return _nextSlave
 
-_nextAWSSlave_wait_sort = safeNextSlave(J(_nextAWSSlave(aws_wait=60, recentSort=True)))
+_nextAWSSlave_wait_sort = safeNextSlave(J(_nextAWSSlave(aws_wait=0, recentSort=True)))
 _nextAWSSlave_nowait = safeNextSlave(_nextAWSSlave())
 
 
@@ -1414,31 +1414,31 @@ def generateBranchObjects(config, name, secrets=None):
             else:
                 fileIsImportant = makeImportantFunc(config['hgurl'], product)
 
-        branchObjects['schedulers'].append(scheduler_class(
-            name=scheduler_name_prefix + "-" + product,
-            branch=config.get("poll_repo", config['repo_path']),
-            builderNames=product_builders,
-            fileIsImportant=fileIsImportant,
-            **extra_args
-        ))
+        # branchObjects['schedulers'].append(scheduler_class(
+        #     name=scheduler_name_prefix + "-" + product,
+        #     branch=config.get("poll_repo", config['repo_path']),
+        #     builderNames=product_builders,
+        #     fileIsImportant=fileIsImportant,
+        #     **extra_args
+        # ))
 
     if config['enable_l10n']:
         l10n_builders = []
         for b in l10nBuilders:
             l10n_builders.append(l10nBuilders[b]['l10n_builder'])
         # This L10n scheduler triggers only the builders of its own branch
-        branchObjects['schedulers'].append(Scheduler(
-            name="%s l10n" % name,
-            branch=config['l10n_repo_path'],
-            treeStableTimer=None,
-            builderNames=l10n_builders,
-            fileIsImportant=lambda c: isImportantL10nFile(
-                c, config['l10n_modules']),
-            properties={
-                'app': 'browser',
-                'en_revision': 'default',
-            }
-        ))
+        # branchObjects['schedulers'].append(Scheduler(
+        #     name="%s l10n" % name,
+        #     branch=config['l10n_repo_path'],
+        #     treeStableTimer=None,
+        #     builderNames=l10n_builders,
+        #     fileIsImportant=lambda c: isImportantL10nFile(
+        #         c, config['l10n_modules']),
+        #     properties={
+        #         'app': 'browser',
+        #         'en_revision': 'default',
+        #     }
+        # ))
 
     # Now, setup the nightly en-US schedulers and maybe,
     # their downstream l10n ones
@@ -1465,7 +1465,7 @@ def generateBranchObjects(config, name, secrets=None):
                 hour=config['start_hour'], minute=config['start_minute'],
                 builderNames=nightlyBuilders + xulrunnerNightlyBuilders,
             )
-        branchObjects['schedulers'].append(nightly_scheduler)
+        # branchObjects['schedulers'].append(nightly_scheduler)
 
     if len(periodicBuilders) > 0:
         hour = config['periodic_start_hours']
@@ -1482,7 +1482,7 @@ def generateBranchObjects(config, name, secrets=None):
                 hour=hour,
                 minute=minute,
             )
-        branchObjects['schedulers'].append(periodic_scheduler)
+        # branchObjects['schedulers'].append(periodic_scheduler)
 
     for builder in nightlyBuilders + xulrunnerNightlyBuilders:
         if config['enable_l10n'] and \
@@ -1507,7 +1507,7 @@ def generateBranchObjects(config, name, secrets=None):
             hour=[3], minute=[02],
             builderNames=weeklyBuilders,
         )
-        branchObjects['schedulers'].append(weekly_scheduler)
+        # branchObjects['schedulers'].append(weekly_scheduler)
 
     # We iterate throught the platforms a second time, so we need
     # to ensure that disabled platforms aren't configured the second time
@@ -1549,6 +1549,8 @@ def generateBranchObjects(config, name, secrets=None):
             # we use this condition to enable/disable on a per platform basis
             if platform in config.get('mozharness_desktop_build_platforms'):
                 # we use this condition to enable/disable on a per branch basis
+                # # XXX JLUND LOCAL DEV CHANGE
+                # if True:
                 if config.get('desktop_mozharness_builds_enabled'):
                     branchObjects['builders'].extend(
                         generateDesktopMozharnessBuilders(
@@ -1964,10 +1966,10 @@ def generateBranchObjects(config, name, secrets=None):
                         'env': builder_env
                     })
 
-                branchObjects["schedulers"].append(Triggerable(
-                    name=mobile_l10n_scheduler_name,
-                    builderNames=mobile_l10n_builders
-                ))
+                # branchObjects["schedulers"].append(Triggerable(
+                #     name=mobile_l10n_scheduler_name,
+                #     builderNames=mobile_l10n_builders
+                # ))
                 triggeredSchedulers = [mobile_l10n_scheduler_name]
 
             else:  # Non-mobile l10n is done differently at this time
