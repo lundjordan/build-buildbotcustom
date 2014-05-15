@@ -157,7 +157,7 @@ def postUploadCmdPrefix(upload_dir=None,
     if branch:
         cmd.extend(["-b", branch])
     if product:
-        cmd.extend(["-p", product])
+        cmd.extend(["-p", product.lower()])
     if buildid:
         cmd.extend(['-i', buildid])
     if buildNumber:
@@ -172,6 +172,7 @@ def postUploadCmdPrefix(upload_dir=None,
         cmd.extend(['--builddir', builddir])
     if to_tinderbox_dated:
         cmd.append('--release-to-tinderbox-dated-builds')
+        cmd.append('--release-to-latest-tinderbox-builds')
     if to_tinderbox_builds:
         cmd.append('--release-to-tinderbox-builds')
     if to_try:
@@ -1344,6 +1345,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
             self.addStep(ShellCommand(
                 name='run_tooltool',
                 command=command,
+                env=self.env,
                 haltOnFailure=True,
             ))
 
