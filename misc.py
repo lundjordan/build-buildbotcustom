@@ -903,78 +903,37 @@ def generateTestBuilder(config, branch_name, platform, name_prefix,
             builder['nextSlave'] = _nextOldTegra
         builders.append(builder)
     else:
-        if isinstance(suites, dict) and "totalChunks" in suites:
-            totalChunks = suites['totalChunks']
-            for i in range(totalChunks):
-                factory = UnittestPackagedBuildFactory(
-                    platform=platform,
-                    test_suites=[suites['suite']],
-                    mochitest_leak_threshold=mochitestLeakThreshold,
-                    crashtest_leak_threshold=crashtestLeakThreshold,
-                    hgHost=config['hghost'],
-                    repoPath=config['repo_path'],
-                    productName=productName,
-                    posixBinarySuffix=posixBinarySuffix,
-                    buildToolsRepoPath=config['build_tools_repo_path'],
-                    buildSpace=1.0,
-                    buildsBeforeReboot=config[
-                        'platforms'][platform]['builds_before_reboot'],
-                    totalChunks=totalChunks,
-                    thisChunk=i + 1,
-                    chunkByDir=suites.get('chunkByDir'),
-                    env=pf.get('unittest-env', {}),
-                    # NB. If you change the defaults here, make sure to update the
-                    # logic in generateTalosBranchObjects for test_type ==
-                    # "debug"
-                    downloadSymbols=pf.get('download_symbols', False),
-                    downloadSymbolsOnDemand=pf.get(
-                        'download_symbols_ondemand', True),
-                    resetHwClock=resetHwClock,
-                )
-                builder = {
-                    'name': '%s %s-%i' % (name_prefix, suites_name, i + 1),
-                    'slavenames': slavenames,
-                    'builddir': '%s-%s-%i' % (build_dir_prefix, suites_name, i + 1),
-                    'slavebuilddir': 'test',
-                    'factory': factory,
-                    'category': category,
-                    'properties': properties,
-                    'env': MozillaEnvironments.get(config['platforms'][platform].get('env_name'), {}),
-                    'nextSlave': _nextAWSSlave_nowait,
-                }
-                builders.append(builder)
-        else:
-            factory = UnittestPackagedBuildFactory(
-                platform=platform,
-                test_suites=suites,
-                mochitest_leak_threshold=mochitestLeakThreshold,
-                crashtest_leak_threshold=crashtestLeakThreshold,
-                hgHost=config['hghost'],
-                repoPath=config['repo_path'],
-                productName=productName,
-                posixBinarySuffix=posixBinarySuffix,
-                buildToolsRepoPath=config['build_tools_repo_path'],
-                buildSpace=1.0,
-                buildsBeforeReboot=config['platforms'][
-                    platform]['builds_before_reboot'],
-                downloadSymbols=pf.get('download_symbols', False),
-                downloadSymbolsOnDemand=pf.get(
-                    'download_symbols_ondemand', True),
-                env=pf.get('unittest-env', {}),
-                resetHwClock=resetHwClock,
-            )
-            builder = {
-                'name': '%s %s' % (name_prefix, suites_name),
-                'slavenames': slavenames,
-                'builddir': '%s-%s' % (build_dir_prefix, suites_name),
-                'slavebuilddir': 'test',
-                'factory': factory,
-                'category': category,
-                'properties': properties,
-                'env': MozillaEnvironments.get(config['platforms'][platform].get('env_name'), {}),
-                'nextSlave': _nextAWSSlave_nowait,
-            }
-            builders.append(builder)
+        factory = UnittestPackagedBuildFactory(
+            platform=platform,
+            test_suites=suites,
+            mochitest_leak_threshold=mochitestLeakThreshold,
+            crashtest_leak_threshold=crashtestLeakThreshold,
+            hgHost=config['hghost'],
+            repoPath=config['repo_path'],
+            productName=productName,
+            posixBinarySuffix=posixBinarySuffix,
+            buildToolsRepoPath=config['build_tools_repo_path'],
+            buildSpace=1.0,
+            buildsBeforeReboot=config['platforms'][
+                platform]['builds_before_reboot'],
+            downloadSymbols=pf.get('download_symbols', False),
+            downloadSymbolsOnDemand=pf.get(
+                'download_symbols_ondemand', True),
+            env=pf.get('unittest-env', {}),
+            resetHwClock=resetHwClock,
+        )
+        builder = {
+            'name': '%s %s' % (name_prefix, suites_name),
+            'slavenames': slavenames,
+            'builddir': '%s-%s' % (build_dir_prefix, suites_name),
+            'slavebuilddir': 'test',
+            'factory': factory,
+            'category': category,
+            'properties': properties,
+            'env': MozillaEnvironments.get(config['platforms'][platform].get('env_name'), {}),
+            'nextSlave': _nextAWSSlave_nowait,
+        }
+        builders.append(builder)
     return builders
 
 
@@ -1005,6 +964,50 @@ def generateMozharnessTalosBuilder(platform, mozharness_repo, script_path,
         }),
     )
 
+
+def generateUnittestBuilders(
+    platform_name,
+    branch,
+    test_type,
+    create_pgo_builders,
+    **test_builder_kwargs
+):
+    builders = []
+    builders.extend(generateTestBuilder(**test_builder_kwargs))
+    if create_pgo_builders and test_type == 'opt':
+        pgo_builder_kwargs = test_builder_kwargs.copy()
+        pgo_builder_kwargs['name_prefix'] = "%s %s pgo test" % (platform_name, branch)
+        pgo_builder_kwargs['build_dir_prefix'] += '_pgo'
+        pgo_builder_kwargs['stagePlatform'] += '-pgo'
+        builders.extend(generateTestBuilder(**pgo_builder_kwargs))
+    return builders
+
+
+def generateChunkedUnittestBuilders(total_chunks, *args, **kwargs):
+    if not total_chunks:
+        return generateUnittestBuilders(
+            *args, **kwargs
+        )
+    builders = []
+    for i in range(1, total_chunks + 1):
+        kwargs_copy = deepcopy(kwargs)
+        kwargs_copy['suites_name'] = '%s-%d' % (kwargs_copy['suites_name'], i)
+        chunk_args = [
+            '--total-chunks', str(total_chunks),
+            '--this-chunk', str(i)
+        ]
+        if 'extra_args' in kwargs_copy['mozharness_suite_config']:
+            kwargs_copy['mozharness_suite_config']['extra_args'].extend(chunk_args)
+        elif 'extra_args' in kwargs_copy['suites']:
+            kwargs_copy['suites']['extra_args'].extend(chunk_args)
+        else:
+            kwargs_copy['mozharness_suite_config']['extra_args'] = chunk_args
+        builders.extend(generateUnittestBuilders(
+            *args, **kwargs_copy
+        ))
+    return builders
+
+
 def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                                       l10nNightlyBuilders, builds_created):
     desktop_mh_builders = []
@@ -1033,7 +1036,6 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     non_unified_extra_args.extend(branch_and_pool_args)
 
     base_builder_dir = '%s-%s' % (name, platform)
-    nightly_build_dir = '%s-%s-nightly' % (name, platform)
     # let's assign next_slave here so we only have to change it in
     # this location for mozharness builds if we swap it out again.
     next_slave = _nextAWSSlave_wait_sort
@@ -1228,6 +1230,10 @@ def generateBranchObjects(config, name, secrets=None):
             if pf.get('enable_nightly'):
                 buildername = '%s_nightly' % pf['base_name']
                 nightlyBuilders.append(buildername)
+
+            if pf.get('enable_nonunified_build'):
+                periodicBuilders.append('%s_nonunified' % pf['base_name'])
+
             continue
 
         values = {'basename': base_name,
@@ -1298,10 +1304,11 @@ def generateBranchObjects(config, name, secrets=None):
                     '%s %s %s l10n nightly' % (pf['product_name'].capitalize(),
                     name, platform)
                 l10nNightlyBuilders[builder]['platform'] = platform
-        if config.get('enable_blocklist_update', False) and platform in ('linux',):
-            weeklyBuilders.append('%s blocklist update' % base_name)
-        if config.get('enable_hsts_update', False) and platform in ('linux64',):
-            weeklyBuilders.append('%s hsts preload update' % base_name)
+        if platform in ('linux64',):
+            if config.get('enable_blocklist_update', False) or \
+               config.get('enable_hsts_update', False) or \
+               config.get('enable_hpkp_update', False):
+                weeklyBuilders.append('%s periodic file update' % base_name)
         if pf.get('enable_xulrunner', config['enable_xulrunner']):
             xulrunnerNightlyBuilders.append('%s xulrunner nightly' % base_name)
 
@@ -1450,9 +1457,12 @@ def generateBranchObjects(config, name, secrets=None):
                 triggerBuildIfNoChanges=False,
                 l10nBranch=config.get('l10n_repo_path')
             )
-        else:
+        elif config.get('enable_nightly_everytime', True):
             goodFunc = lastRevFunc(
                 config['repo_path'], triggerBuildIfNoChanges=True)
+        else:
+            goodFunc = lastRevFunc(
+                config['repo_path'], triggerBuildIfNoChanges=False)
 
         nightly_scheduler = makePropertiesScheduler(
             SpecificNightly,
@@ -1599,6 +1609,25 @@ def generateBranchObjects(config, name, secrets=None):
                 elif pf.get('enable_periodic', False):
                     builder['name'] = '%s_periodic' % pf['base_name']
                     branchObjects['builders'].append(builder)
+
+                if pf.get('enable_nonunified_build'):
+                    # We need a new factory for new extra_args
+                    extra_args = pf['mozharness_config'].get('extra_args', [])[:]
+                    extra_args += pf['mozharness_config'].get('non_unified_extra_args', [])
+                    non_unified_factory = makeMHFactory(config, pf, extra_args=extra_args,
+                                            signingServers=secrets.get(pf.get('dep_signing_servers')),
+                                            use_credentials_file=True)
+                    non_unified_builder = {
+                        'name': '%s_nonunified' % pf['base_name'],
+                        'slavenames': pf['slaves'],
+                        'nextSlave': _nextAWSSlave_wait_sort,
+                        'builddir': '%s_nonunified' % pf['base_name'],
+                        'slavebuilddir': normalizeName('%s_nonunified' % pf['base_name']),
+                        'factory': non_unified_factory,
+                        'category': name,
+                        'properties': builder['properties'].copy(),
+                    }
+                    branchObjects['builders'].append(non_unified_builder)
 
                 if pf.get('enable_nightly'):
                     if pf.get('dep_signing_servers') != pf.get('nightly_signing_servers'):
@@ -2197,6 +2226,9 @@ def generateBranchObjects(config, name, secrets=None):
                         mock_packages=pf.get('mock_packages'),
                         mock_copyin_files=pf.get('mock_copyin_files'),
                         enable_pymake=enable_pymake,
+                        tooltool_manifest_src=pf.get('tooltool_l10n_manifest_src'),
+                        tooltool_script=pf.get('tooltool_script'),
+                        tooltool_url_list=config.get('tooltool_url_list', []),
                         **l10n_kwargs
                     )
                     # eg. Thunderbird comm-aurora linux l10n nightly
@@ -2267,6 +2299,9 @@ def generateBranchObjects(config, name, secrets=None):
                 mock_copyin_files=pf.get('mock_copyin_files'),
                 mozconfig=mozconfig,
                 enable_pymake=enable_pymake,
+                tooltool_manifest_src=pf.get('tooltool_l10n_manifest_src'),
+                tooltool_script=pf.get('tooltool_script'),
+                tooltool_url_list=config.get('tooltool_url_list', []),
                 **dep_kwargs
             )
             # eg. Thunderbird comm-central linux l10n dep
@@ -2323,17 +2358,13 @@ def generateBranchObjects(config, name, secrets=None):
             }
             branchObjects['builders'].append(mozilla2_valgrind_builder)
 
-        if config.get('enable_blocklist_update', False):
-            if platform == 'linux':
-                blocklistBuilder = generateBlocklistBuilder(
+        if platform in ('linux64',):
+            if config.get('enable_blocklist_update', False) or \
+               config.get('enable_hsts_update', False) or \
+               config.get('enable_hpkp_update', False):
+                periodicFileUpdateBuilder = generatePeriodicFileUpdateBuilder(
                     config, name, platform, pf['base_name'], pf['slaves'])
-                branchObjects['builders'].append(blocklistBuilder)
-
-        if config.get('enable_hsts_update', False):
-            if platform == 'linux64':
-                hstsBuilder = generateHSTSBuilder(
-                    config, name, platform, pf['base_name'], pf['slaves'])
-                branchObjects['builders'].append(hstsBuilder)
+                branchObjects['builders'].append(periodicFileUpdateBuilder)
 
         if pf.get('enable_xulrunner', config['enable_xulrunner']):
             xr_env = pf['env'].copy()
@@ -2640,19 +2671,25 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                         triggeredUnittestBuilders = []
                         pgoUnittestBuilders = []
                         unittest_suites = "%s_unittest_suites" % test_type
+                        build_dir_prefix = platform_config[slave_platform].get(
+                                'build_dir_prefix', slave_platform)
                         if test_type == "debug":
                             # Debug tests always need to download symbols for
                             # runtime assertions
-                            branch_config = deepcopy(branch_config)
                             pf = branch_config['platforms'][platform]
                             if pf.get('download_symbols', False) or pf.get('download_symbols_ondemand', True):
+                                # Copy the platform config so we can modify it here
+                                # safely
+                                branch_config['platforms'][platform] = deepcopy(branch_config['platforms'][platform])
+                                # Get a new reference
+                                pf = branch_config['platforms'][platform]
                                 pf['download_symbols'] = True
                                 pf['download_symbols_ondemand'] = False
-                            slave_platform_name = "%s-debug" % slave_platform
+                            slave_platform_name = "%s-debug" % build_dir_prefix
                         elif test_type == "mobile":
-                            slave_platform_name = "%s-mobile" % slave_platform
+                            slave_platform_name = "%s-mobile" % build_dir_prefix
                         else:
-                            slave_platform_name = slave_platform
+                            slave_platform_name = build_dir_prefix
 
                         # in case this builder is a set of suites
                         builders_with_sets_mapping = {}
@@ -2667,16 +2704,18 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                                 for s in suites['trychooser_suites']:
                                     builders_with_sets_mapping[s] = suites_name
 
+                        scheduler_slave_platform_identifier = platform_config[slave_platform].get(
+                                'scheduler_slave_platform_identifier', slave_platform)
                         triggeredUnittestBuilders.append(
                             (
                                 'tests-%s-%s-%s-unittest' % (
-                                    branch, slave_platform, test_type),
+                                    branch, scheduler_slave_platform_identifier, test_type),
                                 test_builders, merge_tests))
                         if create_pgo_builders and test_type == 'opt':
                             pgoUnittestBuilders.append(
                                 (
                                     'tests-%s-%s-pgo-unittest' % (
-                                        branch, slave_platform),
+                                        branch, scheduler_slave_platform_identifier),
                                     pgo_builders, merge_tests))
 
                         for suites_name, suites in branch_config['platforms'][platform][slave_platform][unittest_suites]:
@@ -2696,6 +2735,7 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                                 "stagePlatform": stage_platform,
                                 "stageProduct": stage_product
                             }
+                            test_builder_chunks = None
                             if isinstance(suites, dict) and "use_mozharness" in suites:
                                 test_builder_kwargs['mozharness_repo'] = branch_config['mozharness_repo']
                                 test_builder_kwargs['mozharness_tag'] = branch_config['mozharness_tag']
@@ -2729,17 +2769,19 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                                     test_builder_kwargs['is_debug'] = False
                                 else:
                                     test_builder_kwargs['is_debug'] = True
+                                if suites.get('totalChunks'):
+                                    test_builder_chunks = suites['totalChunks']
 
                             branchObjects['builders'].extend(
-                                generateTestBuilder(**test_builder_kwargs))
-                            if create_pgo_builders and test_type == 'opt':
-                                pgo_builder_kwargs = test_builder_kwargs.copy()
-                                pgo_builder_kwargs['name_prefix'] = "%s %s pgo test" % (platform_name, branch)
-                                pgo_builder_kwargs[
-                                    'build_dir_prefix'] += '_pgo'
-                                pgo_builder_kwargs['stagePlatform'] += '-pgo'
-                                branchObjects['builders'].extend(
-                                    generateTestBuilder(**pgo_builder_kwargs))
+                                generateChunkedUnittestBuilders(
+                                    test_builder_chunks,
+                                    platform_name,
+                                    branch,
+                                    test_type,
+                                    create_pgo_builders,
+                                    **test_builder_kwargs
+                                )
+                            )
 
                         for scheduler_name, test_builders, merge in triggeredUnittestBuilders:
                             for test in test_builders:
@@ -2901,10 +2943,9 @@ def mirrorAndBundleArgs(config):
     return args
 
 
-def generateBlocklistBuilder(config, branch_name, platform, base_name, slaves):
+def generatePeriodicFileUpdateBuilder(config, branch_name, platform, base_name, slaves):
     pf = config['platforms'].get(platform, {})
-    extra_args = ['-b', config['repo_path'],
-                  '--hgtool', 'scripts/buildfarm/utils/hgtool.py']
+    extra_args = ['-b', config['repo_path']]
 
     extra_args += mirrorAndBundleArgs(config)
     if pf['product_name'] is not None:
@@ -2913,62 +2954,34 @@ def generateBlocklistBuilder(config, branch_name, platform, base_name, slaves):
         extra_args.extend(['-u', config['hg_username']])
     if config['hg_ssh_key'] is not None:
         extra_args.extend(['-k', config['hg_ssh_key']])
-    if config['blocklist_update_on_closed_tree'] is True:
+    if config['file_update_on_closed_tree'] is True:
         extra_args.extend(['-c'])
-    if config['blocklist_update_set_approval'] is True:
+    if config['file_update_set_approval'] is True:
         extra_args.extend(['-a'])
-    blocklistupdate_factory = ScriptFactory(
+    if config['enable_blocklist_update'] is True:
+        extra_args.extend(['--blocklist'])
+    if config['enable_hsts_update'] is True:
+        extra_args.extend(['--hsts'])
+    if config['enable_hpkp_update'] is True:
+        extra_args.extend(['--hpkp'])
+
+    periodic_file_update_factory = ScriptFactory(
         "%s%s" % (config['hgurl'],
         config['build_tools_repo_path']),
-        'scripts/blocklist/sync-hg-blocklist.sh',
+        'scripts/periodic_file_updates/periodic_file_updates.sh',
         interpreter='bash',
         extra_args=extra_args,
     )
-    blocklistupdate_builder = {
-        'name': '%s blocklist update' % base_name,
+    periodic_file_update_builder = {
+        'name': '%s periodic file update' % base_name,
         'slavenames': slaves,
-        'builddir': '%s-%s-blocklistupdate' % (branch_name, platform),
-        'slavebuilddir': normalizeName('%s-%s-blocklistupdate' % (branch_name, platform)),
-        'factory': blocklistupdate_factory,
+        'builddir': '%s-%s-periodicupdate' % (branch_name, platform),
+        'slavebuilddir': normalizeName('%s-%s-periodicupdate' % (branch_name, platform)),
+        'factory': periodic_file_update_factory,
         'category': branch_name,
-        'properties': {'branch': branch_name, 'platform': platform, 'slavebuilddir': normalizeName('%s-%s-blocklistupdate' % (branch_name, platform)), 'product': 'firefox'},
+        'properties': {'branch': branch_name, 'platform': platform, 'slavebuilddir': normalizeName('%s-%s-periodicupdate' % (branch_name, platform)), 'product': 'firefox'},
     }
-    return blocklistupdate_builder
-
-
-def generateHSTSBuilder(config, branch_name, platform, base_name, slaves):
-    pf = config['platforms'].get(platform, {})
-    extra_args = ['-b', config['repo_path'],
-                  '--hgtool', 'scripts/buildfarm/utils/hgtool.py']
-
-    extra_args += mirrorAndBundleArgs(config)
-    if pf['product_name'] is not None:
-        extra_args.extend(['-p', pf['product_name']])
-    if config['hg_username'] is not None:
-        extra_args.extend(['-u', config['hg_username']])
-    if config['hg_ssh_key'] is not None:
-        extra_args.extend(['-k', config['hg_ssh_key']])
-    if config['hsts_update_on_closed_tree'] is True:
-        extra_args.extend(['-c'])
-    if config['hsts_update_set_approval'] is True:
-        extra_args.extend(['-a'])
-    hsts_update_factory = ScriptFactory(
-        "%s%s" % (config['hgurl'],
-        config['build_tools_repo_path']),
-        'scripts/hsts/update_hsts_preload_list.sh',
-        interpreter='bash',
-        extra_args=extra_args,
-    )
-    hsts_update_builder = {
-        'name': '%s hsts preload update' % base_name,
-        'slavenames': slaves,
-        'builddir': '%s-%s-hsts' % (branch_name, platform),
-        'slavebuilddir': normalizeName('%s-%s-hsts' % (branch_name, platform)),
-        'factory': hsts_update_factory,
-        'category': branch_name,
-        'properties': {'branch': branch_name, 'platform': platform, 'slavebuilddir': normalizeName('%s-%s-hsts' % (branch_name, platform)), 'product': 'firefox'},
-    }
-    return hsts_update_builder
+    return periodic_file_update_builder
 
 
 def generateFuzzingObjects(config, SLAVES):

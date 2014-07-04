@@ -131,7 +131,6 @@ def postUploadCmdPrefix(upload_dir=None,
                         to_dated=False,
                         to_latest=False,
                         to_try=False,
-                        to_shadow=False,
                         to_candidates=False,
                         to_mobile_candidates=False,
                         nightly_dir=None,
@@ -181,8 +180,6 @@ def postUploadCmdPrefix(upload_dir=None,
         cmd.append("--release-to-latest")
     if to_dated:
         cmd.append("--release-to-dated")
-    if to_shadow:
-        cmd.append("--release-to-shadow-central-builds")
     if to_candidates:
         cmd.append("--release-to-candidates-dir")
     if to_mobile_candidates:
@@ -278,7 +275,6 @@ def getPlatformMinidumpPath(platform):
         # Android uses OSX *and* Linux because the Foopies are on both.
         'android': WithProperties('/builds/minidump_stackwalk'),
         'android-x86': WithProperties('/builds/minidump_stackwalk'),
-        'android-noion': WithProperties('/builds/minidump_stackwalk'),
         'android-armv6': WithProperties('/builds/minidump_stackwalk'),
     }
     return platform_minidump_path[platform]
@@ -379,6 +375,27 @@ class MockMixin(object):
                 packages=self.mock_packages,
                 timeout=2700,
             ))
+
+
+class TooltoolMixin(object):
+    def addTooltoolStep(self, **kwargs):
+        command=[
+            'sh',
+            WithProperties(
+                '%(toolsdir)s/scripts/tooltool/tooltool_wrapper.sh'),
+            self.tooltool_manifest_src,
+            self.tooltool_url_list[0],
+            self.tooltool_bootstrap,
+        ]
+        if self.tooltool_script:
+            command.extend(self.tooltool_script)
+        self.addStep(ShellCommand(
+            name='run_tooltool',
+            command=command,
+            env=self.env,
+            haltOnFailure=True,
+            **kwargs
+        ))
 
 
 class MozillaBuildFactory(RequestSortingBuildFactory, MockMixin):
@@ -779,7 +796,7 @@ class MozillaBuildFactory(RequestSortingBuildFactory, MockMixin):
         ))
 
 
-class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
+class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
     def __init__(self, objdir, platform, configRepoPath, configSubDir,
                  profiledBuild, mozconfig, srcMozconfig=None,
                  productName=None,
@@ -1186,15 +1203,6 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
                      description=['deleting', 'old', 'package'],
                      descriptionDone=['delete', 'old', 'package']
                      ))
-        if self.nightly:
-            self.addStep(ShellCommand(
-                         name='rm_old_symbols',
-                         command="find 20* -maxdepth 2 -mtime +7 -exec rm -rf {} \;",
-                         env=self.env,
-                         workdir='.',
-                         description=['cleanup', 'old', 'symbols'],
-                         flunkOnFailure=False
-                         ))
 
     def addGaiaSourceSteps(self):
         if self.gaiaRevisionFile:
@@ -1332,22 +1340,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
                      command=['cat', '.mozconfig'],
                      ))
         if self.tooltool_manifest_src:
-            command=[
-                'sh',
-                WithProperties(
-                    '%(toolsdir)s/scripts/tooltool/tooltool_wrapper.sh'),
-                self.tooltool_manifest_src,
-                self.tooltool_url_list[0],
-                self.tooltool_bootstrap,
-            ]
-            if self.tooltool_script:
-                command.extend(self.tooltool_script)
-            self.addStep(ShellCommand(
-                name='run_tooltool',
-                command=command,
-                env=self.env,
-                haltOnFailure=True,
-            ))
+            self.addTooltoolStep()
 
     def addDoBuildSteps(self):
         workdir = WithProperties('%(basedir)s/build')
@@ -1364,8 +1357,9 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin):
                      description=['compile'],
                      env=self.env,
                      haltOnFailure=True,
-                     timeout=2 * 3600,  # max of 2 hours without output before killing
-                     maxTime=int(4.5 * 3600),  # max of 4.5 hours total runtime before killing
+                     # bug 1027983
+                     timeout=3 * 3600,  # max of 3 hours without output before killing
+                     maxTime=int(5.5 * 3600),  # max of 5.5 hours total runtime before killing
                      mock=self.use_mock,
                      target=self.mock_target,
                      workdir=workdir,
@@ -2460,12 +2454,7 @@ class NightlyBuildFactory(MercurialBuildFactory):
             revision=WithProperties("%(got_revision)s"),
             as_list=False,
         )
-        if self.hgHost.startswith('ssh'):
-            uploadArgs['to_shadow'] = True
-            uploadArgs['to_tinderbox_dated'] = False
-        else:
-            uploadArgs['to_shadow'] = False
-            uploadArgs['to_tinderbox_dated'] = True
+        uploadArgs['to_tinderbox_dated'] = True
 
         if self.nightly:
             uploadArgs['to_dated'] = True
@@ -2523,6 +2512,21 @@ class NightlyBuildFactory(MercurialBuildFactory):
                 locks=[upload_lock.access('counting')],
             ))
 
+        def getPartialInfo(build):
+            return [{
+                "from_buildid": build.getProperty("previous_buildid"),
+                "size": build.getProperty("partialMarSize"),
+                "hash": build.getProperty("partialMarHash"),
+                "url": build.getProperty("partialMarUrl"),
+            }]
+
+        self.addStep(SetBuildProperty(
+            property_name="partialInfo",
+            value=getPartialInfo,
+            doStepIf=self.previousMarExists,
+            haltOnFailure=True,
+        ))
+
         if self.profiledBuild:
             talosBranch = "%s-%s-pgo-talos" % (
                 self.branchName, self.complete_platform)
@@ -2560,8 +2564,7 @@ class NightlyBuildFactory(MercurialBuildFactory):
                              ))
 
             files = [WithProperties('%(packageUrl)s')]
-            if '1.9.1' not in self.branchName:
-                files.append(WithProperties('%(testsUrl)s'))
+            files.append(WithProperties('%(testsUrl)s'))
 
             if self.packageTests:
                 for master, warn, retries in self.unittestMasters:
@@ -2664,6 +2667,7 @@ class ReleaseBuildFactory(MercurialBuildFactory):
             target=self.mock_target,
             workdir='%s/current' % self.absMozillaObjDir,
         ))
+
         for oldVersion in self.partialUpdates:
             oldBuildNumber = self.partialUpdates[oldVersion]['buildNumber']
 
@@ -2764,6 +2768,29 @@ class ReleaseBuildFactory(MercurialBuildFactory):
                 ))
                 self.UPLOAD_EXTRA_FILES.append('%s/%s.asc' % (self.update_dir,
                                                               partial_mar_name))
+
+            self.addFilePropertiesSteps(
+                filename=partial_mar_name,
+                directory='%s/dist/%s' % (self.absMozillaObjDir, self.update_dir),
+                fileType='%sMar' % oldVersion,
+                haltOnFailure=True,
+            )
+
+        def getPartialInfo(build, oldVersions):
+            partials = []
+            for v in oldVersions:
+                partials.append({
+                    "previousVersion": v,
+                    "size": build.getProperty("%sMarSize" % v),
+                    "hash": build.getProperty("%sMarHash" % v),
+                })
+            return partials
+
+        self.addStep(SetBuildProperty(
+            property_name="partialInfo",
+            value=lambda b: getPartialInfo(b, self.partialUpdates.keys()),
+            haltOnFailure=True,
+        ))
 
     def doUpload(self, postUploadBuildDir=None, uploadMulti=False):
         info_txt = '%s_info.txt' % self.complete_platform
@@ -2969,7 +2996,7 @@ def identToProperties(default_prop=None):
     return list2dict
 
 
-class BaseRepackFactory(MozillaBuildFactory):
+class BaseRepackFactory(MozillaBuildFactory, TooltoolMixin):
     # Override ignore_dirs so that we don't delete l10n nightly builds
     # before running a l10n nightly build
     ignore_dirs = MozillaBuildFactory.ignore_dirs + [normalizeName('*-nightly')]
@@ -2985,6 +3012,10 @@ class BaseRepackFactory(MozillaBuildFactory):
                  testPrettyNames=False,
                  callClientPy=False,
                  clientPyConfig=None,
+                 tooltool_manifest_src=None,
+                 tooltool_bootstrap="setup.sh",
+                 tooltool_url_list=None,
+                 tooltool_script=None,
                  **kwargs):
         MozillaBuildFactory.__init__(self, **kwargs)
 
@@ -3005,6 +3036,12 @@ class BaseRepackFactory(MozillaBuildFactory):
         self.testPrettyNames = testPrettyNames
         self.callClientPy = callClientPy
         self.clientPyConfig = clientPyConfig
+        self.tooltool_manifest_src = tooltool_manifest_src
+        self.tooltool_url_list = tooltool_url_list or []
+        self.tooltool_script = tooltool_script or ['/tools/tooltool.py']
+        self.tooltool_bootstrap = tooltool_bootstrap
+
+        assert len(self.tooltool_url_list) <= 1, "multiple urls not currently supported by tooltool"
 
         self.addStep(SetBuildProperty(
                      property_name='tree',
@@ -3097,6 +3134,8 @@ class BaseRepackFactory(MozillaBuildFactory):
         self.getSources()
         self.updateSources()
         self.getMozconfig()
+        if self.tooltool_manifest_src:
+            self.addTooltoolStep(workdir=self.absSrcDir)
         self.configure()
         self.tinderboxPrintBuildInfo()
         self.downloadBuilds()
@@ -3226,6 +3265,21 @@ class BaseRepackFactory(MozillaBuildFactory):
                      mock=self.use_mock,
                      target=self.mock_target,
                      ))
+
+        def getPartialInfo(build):
+            return [{
+                "from_buildid": build.getProperty("previous_buildid"),
+                "size": build.getProperty("partialMarSize"),
+                "hash": build.getProperty("partialMarHash"),
+                "url": build.getProperty("partialMarUrl"),
+            }]
+
+        self.addStep(SetBuildProperty(
+            property_name="partialInfo",
+            value=getPartialInfo,
+            doStepIf=self.previousMarExists,
+            haltOnFailure=True,
+        ))
 
     def getSources(self):
         step = self.makeHgtoolStep(
@@ -3638,6 +3692,7 @@ class NightlyRepackFactory(BaseRepackFactory, NightlyBuildFactory):
         self.addStep(MockProperty(
                      command=self.makeCmd + ['ident'],
                      haltOnFailure=True,
+                     env=self.env,
                      workdir = '%s/%s/locales' % (self.absObjDir,
                                                   self.appName),
                      extract_fn=identToProperties(),
@@ -4485,73 +4540,6 @@ class ReleaseFinalVerification(ReleaseFactory):
                      ))
 
 
-class TuxedoEntrySubmitterFactory(ReleaseFactory):
-    def __init__(self, baseTag, appName, config, productName, version,
-                 tuxedoServerUrl, enUSPlatforms, l10nPlatforms,
-                 extraPlatforms=None, bouncerProductName=None, brandName=None,
-                 partialUpdates=None, credentialsFile=None, verbose=True,
-                 dryRun=False, milestone=None, bouncerProductSuffix=None,
-                 **kwargs):
-        ReleaseFactory.__init__(self, **kwargs)
-
-        extraPlatforms = extraPlatforms or []
-        cmd = ['python', 'tuxedo-add.py',
-               '--config', config,
-               '--product', productName,
-               '--version', version,
-               '--tuxedo-server-url', tuxedoServerUrl]
-
-        if l10nPlatforms:
-            cmd.extend(['--shipped-locales', 'shipped-locales'])
-            shippedLocales = self.getShippedLocales(self.repository, baseTag,
-                                                    appName)
-            self.addStep(ShellCommand(
-                         name='get_shipped_locales',
-                         command=['wget', '-O',
-                                  'shipped-locales', shippedLocales],
-                         description=['get', 'shipped-locales'],
-                         haltOnFailure=True,
-                         workdir='tools/release'
-                         ))
-
-        bouncerProductName = bouncerProductName or productName.capitalize()
-        cmd.extend(['--bouncer-product-name', bouncerProductName])
-        brandName = brandName or productName.capitalize()
-        cmd.extend(['--brand-name', brandName])
-
-        for previousVersion in partialUpdates:
-            cmd.extend(['--partial-version', previousVersion])
-
-        if milestone:
-            cmd.extend(['--milestone', milestone])
-
-        if bouncerProductSuffix:
-            cmd.extend(['--bouncer-product-suffix', bouncerProductSuffix])
-
-        for platform in sorted(enUSPlatforms):
-            cmd.extend(['--platform', platform])
-
-        for platform in sorted(extraPlatforms):
-            cmd.extend(['--platform', platform])
-
-        if credentialsFile:
-            target_file_name = os.path.basename(credentialsFile)
-            cmd.extend(['--credentials-file', target_file_name])
-            self.addStep(FileDownload(
-                         mastersrc=credentialsFile,
-                         slavedest=target_file_name,
-                         workdir='tools/release',
-                         ))
-
-        self.addStep(RetryingShellCommand(
-                     name='tuxedo_add',
-                     command=cmd,
-                     description=['tuxedo-add.py'],
-                     env={'PYTHONPATH': ['../lib/python']},
-                     workdir='tools/release',
-                     ))
-
-
 def parse_sendchange_files(build, include_substr='', exclude_substrs=[]):
     '''Given a build object, figure out which files have the include_substr
     in them, then exclude files that have one of the exclude_substrs. This
@@ -4597,8 +4585,6 @@ class MozillaTestFactory(MozillaBuildFactory):
         MozillaBuildFactory.__init__(self, **kwargs)
 
         self.ignoreCerts = False
-        if self.branchName.lower().startswith('shadow'):
-            self.ignoreCerts = True
 
         self.addCleanupSteps()
         self.addPrepareBuildSteps()
@@ -4887,53 +4873,7 @@ class UnittestPackagedBuildFactory(MozillaTestFactory):
             symbols_path = 'symbols'
         for suite in self.test_suites:
             leak_threshold = self.leak_thresholds.get(suite, None)
-            if suite.startswith('mobile-mochitest'):
-                # Mobile specific mochitests need a couple things to be
-                # set differently compared to non-mobile specific tests
-                real_suite = suite[len('mobile-'):]
-                # Unpack the tests
-                self.addStep(UnpackTest(
-                             filename=WithProperties('%(tests_filename)s'),
-                             testtype='mochitest',
-                             haltOnFailure=True,
-                             name='unpack mochitest tests',
-                             ))
-
-                variant = real_suite.split('-', 1)[1]
-                self.addStep(unittest_steps.MozillaPackagedMochitests(
-                             variant=variant,
-                             env=self.env,
-                             symbols_path=symbols_path,
-                             testPath='mobile',
-                             leakThreshold=leak_threshold,
-                             chunkByDir=self.chunkByDir,
-                             totalChunks=self.totalChunks,
-                             thisChunk=self.thisChunk,
-                             maxTime=90 * 60,
-                             # One and a half hours, to allow for slow hardware
-                             ))
-            elif suite.startswith('mochitest'):
-                # Unpack the tests
-                self.addStep(UnpackTest(
-                             filename=WithProperties('%(tests_filename)s'),
-                             testtype='mochitest',
-                             haltOnFailure=True,
-                             name='unpack mochitest tests',
-                             ))
-
-                variant = suite.split('-', 1)[1]
-                self.addStep(unittest_steps.MozillaPackagedMochitests(
-                             variant=variant,
-                             env=self.env,
-                             symbols_path=symbols_path,
-                             leakThreshold=leak_threshold,
-                             chunkByDir=self.chunkByDir,
-                             totalChunks=self.totalChunks,
-                             thisChunk=self.thisChunk,
-                             maxTime=120 * 60,
-                             # Two hours for slow debug tests
-                             ))
-            elif suite == 'xpcshell':
+            if suite == 'xpcshell':
                 # Unpack the tests
                 self.addStep(UnpackTest(
                              filename=WithProperties('%(tests_filename)s'),
@@ -4947,23 +4887,6 @@ class UnittestPackagedBuildFactory(MozillaTestFactory):
                              platform=self.platform,
                              symbols_path=symbols_path,
                              maxTime=120 * 60,  # Two Hours
-                             ))
-            elif suite in ('jsreftest', ):
-                # Specialized runner for jsreftest because they take so long to unpack and clean up
-                # Unpack the tests
-                self.addStep(UnpackTest(
-                             filename=WithProperties('%(tests_filename)s'),
-                             testtype='jsreftest',
-                             haltOnFailure=True,
-                             name='unpack jsreftest tests',
-                             ))
-
-                self.addStep(unittest_steps.MozillaPackagedReftests(
-                             suite=suite,
-                             env=self.env,
-                             leakThreshold=leak_threshold,
-                             symbols_path=symbols_path,
-                             maxTime=2 * 60 * 60,  # Two Hours
                              ))
             elif suite == 'jetpack':
                 # Unpack the tests
@@ -4979,7 +4902,7 @@ class UnittestPackagedBuildFactory(MozillaTestFactory):
                              env=self.env,
                              leakThreshold=leak_threshold,
                              symbols_path=symbols_path,
-                             maxTime=120 * 60,  # Two Hours
+                             maxTime=75 * 60,  # 75 Minutes
                              ))
 
                 self.addStep(unittest_steps.MozillaPackagedJetpackTests(
@@ -4987,29 +4910,7 @@ class UnittestPackagedBuildFactory(MozillaTestFactory):
                              env=self.env,
                              leakThreshold=leak_threshold,
                              symbols_path=symbols_path,
-                             maxTime=120 * 60,  # Two Hours
-                             ))
-            elif suite in (
-                'reftest', 'reftestsmall', 'reftest-ipc', 'reftest-d2d', 'crashtest',
-                           'crashtest-ipc', 'direct3D', 'opengl', 'opengl-no-accel',
-                           'reftest-no-d2d-d3d'):
-                if suite in ('direct3D', 'opengl'):
-                    self.env.update({'MOZ_ACCELERATED': '11'})
-                if suite in ('reftest-ipc', 'crashtest-ipc'):
-                    self.env.update({'MOZ_LAYERS_FORCE_SHMEM_SURFACES': '1'})
-                # Unpack the tests
-                self.addStep(UnpackTest(
-                             filename=WithProperties('%(tests_filename)s'),
-                             testtype='reftest',
-                             haltOnFailure=True,
-                             name='unpack reftest tests',
-                             ))
-                self.addStep(unittest_steps.MozillaPackagedReftests(
-                             suite=suite,
-                             env=self.env,
-                             leakThreshold=leak_threshold,
-                             symbols_path=symbols_path,
-                             maxTime=2 * 60 * 60,  # Two Hours
+                             maxTime=30 * 60,  # 30 Minutes
                              ))
             elif suite == 'mozmill':
                 MOZMILL_VIRTUALENV_DIR = os.path.join(
@@ -5430,8 +5331,6 @@ class TalosFactory(RequestSortingBuildFactory):
         self.buildBranch = buildBranch
         self.branchName = branchName
         self.ignoreCerts = False
-        if self.branchName.lower().startswith('shadow'):
-            self.ignoreCerts = True
         self.remoteTests = remoteTests
         self.configOptions = configOptions['suites'][:]
         try:
@@ -5469,7 +5368,6 @@ class TalosFactory(RequestSortingBuildFactory):
         if self.remoteTests:
             self.addMobileCleanupSteps()
         self.addCleanupSteps()
-        self.addDmgInstaller()
         self.addDownloadBuildStep()
         self.addUnpackBuildSteps()
         self.addGetBuildInfoStep()
@@ -5478,7 +5376,6 @@ class TalosFactory(RequestSortingBuildFactory):
         self.addSetupSteps()
         self.addPluginInstallSteps()
         self.addPagesetInstallSteps()
-        self.addAddOnInstallSteps()
         if self.remoteTests:
             self.addPrepareDeviceStep()
         self.addUpdateConfigStep()
@@ -5531,73 +5428,13 @@ class TalosFactory(RequestSortingBuildFactory):
                      ))
 
     def addCleanupSteps(self):
-        if self.OS in ('xp', 'xp-ix', 'win7', 'w764', 'win7-ix', 'win8'):
-            # required step due to long filename length in tp4
-            self.addStep(ShellCommand(
-                         name='mv tp4',
-                         workdir=os.path.join(self.workdirBase),
-                         flunkOnFailure=False,
-                         warnOnFailure=False,
-                         description="move tp4 out of talos dir to tp4-%random%",
-                         command=["if", "exist", "talos\\page_load_test\\tp4",
-                                  "mv", "talos\\page_load_test\\tp4", "tp4-%random%"],
-                         env=self.env)
-                         )
-            # required step due to long filename length in tp5
-            self.addStep(ShellCommand(
-                         name='mv tp5',
-                         workdir=os.path.join(self.workdirBase),
-                         flunkOnFailure=False,
-                         warnOnFailure=False,
-                         description="move tp5 out of talos dir to tp5-%random%",
-                         command=["if", "exist", "talos\\page_load_test\\tp5",
-                                  "mv", "talos\\page_load_test\\tp5", "tp5-%random%"],
-                         env=self.env)
-                         )
-            self.addStep(ShellCommand(
-                         name='chmod_files',
-                         workdir=self.workdirBase,
-                         flunkOnFailure=False,
-                         warnOnFailure=False,
-                         description="chmod files (see msys bug)",
-                         command=["chmod", "-R", "a+rwx", "."],
-                         env=self.env)
-                         )
-            # on windows move the whole working dir out of the way, saves us
-            # trouble later
-            self.addStep(ShellCommand(
-                         name='move old working dir out of the way',
-                         workdir=os.path.dirname(self.workdirBase),
-                         description="move working dir",
-                         command=["if", "exist", os.path.basename(self.workdirBase), "mv", os.path.basename(self.workdirBase), "t-%random%"],
-                         env=self.env)
-                         )
-            self.addStep(ShellCommand(
-                         name='remove any old working dirs',
-                         workdir=os.path.dirname(self.workdirBase),
-                         description="remove old working dirs",
-                         command='if exist t-* nohup rm -rf t-*',
-                         env=self.env)
-                         )
-            self.addStep(ShellCommand(
-                         name='create new working dir',
-                         workdir=os.path.dirname(self.workdirBase),
-                         description="create new working dir",
-                         command='mkdir ' + os.path.basename(self.workdirBase),
-                         env=self.env)
-                         )
-        else:
-            self.addStep(ShellCommand(
-                         name='cleanup',
-                         workdir=self.workdirBase,
-                         description="Cleanup",
-                         command='nohup rm -rf *',
-                         env=self.env)
-                         )
-        if 'fed' in self.OS:
-            self.addStep(ShellCommand(
-                name='disable_screensaver',
-                command=['xset', 's', 'off', 's', 'reset']))
+        self.addStep(ShellCommand(
+                        name='cleanup',
+                        workdir=self.workdirBase,
+                        description="Cleanup",
+                        command='nohup rm -rf *',
+                        env=self.env)
+                        )
         self.addStep(ShellCommand(
                      name='create talos dir',
                      workdir=self.workdirBase,
@@ -5608,15 +5445,6 @@ class TalosFactory(RequestSortingBuildFactory):
         if not self.remoteTests:
             self.addStep(DownloadFile(
                          url=WithProperties("%s/tools/buildfarm/maintenance/count_and_reboot.py" % self.supportUrlBase),
-                         workdir=self.workdirBase,
-                         haltOnFailure=True,
-                         ))
-
-    def addDmgInstaller(self):
-        if self.OS in ('snowleopard', 'lion', 'mountainlion', "mavericks"):
-            self.addStep(DownloadFile(
-                         url=WithProperties("%s/tools/buildfarm/utils/installdmg.sh" %
-                                            self.supportUrlBase),
                          workdir=self.workdirBase,
                          haltOnFailure=True,
                          ))
@@ -5667,28 +5495,7 @@ class TalosFactory(RequestSortingBuildFactory):
                          ))
 
     def addUnpackBuildSteps(self):
-        if (self.releaseTester and (self.OS in ('xp', 'xp-ix', 'win7', 'w764', 'win7-ix', 'win8'))):
-            # build is packaged in a windows installer
-            self.addStep(DownloadFile(
-                         url=WithProperties("%s/tools/buildfarm/utils/firefoxInstallConfig.ini" % self.supportUrlBase),
-                         haltOnFailure=True,
-                         workdir=self.workdirBase,
-                         ))
-            self.addStep(SetProperty(
-                         name='set workdir path',
-                         command=['pwd'],
-                         property='workdir_pwd',
-                         workdir=self.workdirBase,
-                         ))
-            self.addStep(ShellCommand(
-                         name='install_release_build',
-                         workdir=self.workdirBase,
-                         description="install windows release build",
-                         command=[WithProperties('%(filename)s'), WithProperties(
-                                  '/INI=%(workdir_pwd)s\\firefoxInstallConfig.ini')],
-                         env=self.env)
-                         )
-        elif self.OS.startswith('tegra_android') or self.OS.startswith('panda_android'):
+        if self.OS.startswith('tegra_android') or self.OS.startswith('panda_android'):
             self.addStep(UnpackFile(
                          filename=WithProperties("../%(filename)s"),
                          workdir="%s/%s" % (
@@ -5709,33 +5516,7 @@ class TalosFactory(RequestSortingBuildFactory):
                          name="Unpack build",
                          haltOnFailure=True,
                          ))
-        if self.OS in ('xp', 'xp-ix', 'win7', 'w764', 'win7-ix', 'win8'):
-            self.addStep(ShellCommand(
-                         name='chmod_files',
-                         workdir=os.path.join(
-                         self.workdirBase, "%s/" % self.productName),
-                         flunkOnFailure=False,
-                         warnOnFailure=False,
-                         description="chmod files (see msys bug)",
-                         command=["chmod", "-R", "a+x", "."],
-                         env=self.env)
-                         )
-        if self.OS in ('snowleopard', 'lion', 'mountainlion', 'mavericks'):
-            self.addStep(FindFile(
-                         workdir=os.path.join(self.workdirBase, "talos"),
-                         filename="%s-bin" % self.productName,
-                         directory="..",
-                         max_depth=4,
-                         property_name="exepath",
-                         name="Find executable",
-                         ))
-        elif self.OS in ('xp', 'xp-ix', 'win7', 'w764', 'win8', 'win7-ix', 'xp-ix'):
-            self.addStep(SetBuildProperty(
-                         property_name="exepath",
-                         value="../%s/%s" % (
-                             self.productName, self.productName)
-                         ))
-        elif self.OS.startswith('tegra_android') or self.OS.startswith('panda_android'):
+        if self.OS.startswith('tegra_android') or self.OS.startswith('panda_android'):
             self.addStep(SetBuildProperty(
                          property_name="exepath",
                          value="../%s/%s" % (
@@ -5793,16 +5574,6 @@ class TalosFactory(RequestSortingBuildFactory):
                 step.addCompleteLog('sdk-fail', 'TinderboxPrint: Skipping tests; can\'t run 10.5 based build on 10.4 slave')
                 return FAILURE
             return SUCCESS
-        if self.OS == "tiger":
-            self.addStep(ShellCommand(
-                command=['bash', '-c',
-                         WithProperties(
-                             'unzip -c %(exedir)s/chrome/toolkit.jar content/global/buildconfig.html | grep sdk')],
-                workdir=os.path.join(self.workdirBase, "talos"),
-                log_eval_fn=check_sdk,
-                haltOnFailure=True,
-                flunkOnFailure=False,
-                name='check sdk okay'))
 
     def addSetupSteps(self):
         if self.credentialsFile:
@@ -5823,44 +5594,28 @@ class TalosFactory(RequestSortingBuildFactory):
                          ))
 
         if self.customTalos is None and not self.remoteTests:
-            if self.talos_from_source_code:
-                self.addStep(DownloadFile(
-                    url=WithProperties("%(repo_path)s/raw-file/%(revision)s/testing/talos/talos_from_code.py"),
-                    workdir=self.workdirBase,
-                    haltOnFailure=True,
-                    wget_args=['--progress=dot:mega',
-                               '--no-check-certificate'],
-                    log_eval_func=lambda c, s: regex_log_evaluator(
-                        c, s, talos_hgweb_errors),
-                ))
-                self.addStep(ShellCommand(
-                    name='download files specified in talos.json',
-                    command=[self.pythonWithJson(
-                        self.OS), 'talos_from_code.py',
-                        '--talos-json-url',
-                        WithProperties(
-                            '%(repo_path)s/raw-file/%(revision)s/testing/talos/talos.json')],
-                    workdir=self.workdirBase,
-                    haltOnFailure=True,
-                    log_eval_func=lambda c, s: regex_log_evaluator(
-                        c, s, talos_hgweb_errors),
-                    timeout=60,
-                ))
-            else:
-                self.addStep(DownloadFile(
-                             url=WithProperties(
-                             "%s/zips/talos.zip" % self.supportUrlBase),
-                             workdir=self.workdirBase,
-                             haltOnFailure=True,
-                             ))
-                self.addStep(DownloadFile(
-                             url=WithProperties(
-                             "%s/xpis/pageloader.xpi" % self.supportUrlBase),
-                             workdir=os.path.join(
-                             self.workdirBase, "talos/page_load_test"),
-                             haltOnFailure=True,
-                             ))
-
+            self.addStep(DownloadFile(
+                url=WithProperties("%(repo_path)s/raw-file/%(revision)s/testing/talos/talos_from_code.py"),
+                workdir=self.workdirBase,
+                haltOnFailure=True,
+                wget_args=['--progress=dot:mega',
+                            '--no-check-certificate'],
+                log_eval_func=lambda c, s: regex_log_evaluator(
+                    c, s, talos_hgweb_errors),
+            ))
+            self.addStep(ShellCommand(
+                name='download files specified in talos.json',
+                command=[self.pythonWithJson(
+                    self.OS), 'talos_from_code.py',
+                    '--talos-json-url',
+                    WithProperties(
+                        '%(repo_path)s/raw-file/%(revision)s/testing/talos/talos.json')],
+                workdir=self.workdirBase,
+                haltOnFailure=True,
+                log_eval_func=lambda c, s: regex_log_evaluator(
+                    c, s, talos_hgweb_errors),
+                timeout=60,
+            ))
             self.addStep(UnpackFile(
                          filename='talos.zip',
                          workdir=self.workdirBase,
@@ -5955,25 +5710,6 @@ class TalosFactory(RequestSortingBuildFactory):
 
     def addPluginInstallSteps(self):
         if self.plugins:
-            # 32 bit (includes mac browsers)
-            if self.OS in ('xp', 'win7', 'ubuntu32_hw',
-                           'tegra_android', 'tegra_android-armv6',
-                           'tegra_android-noion', 'panda_android',
-                           'snowleopard', 'lion', 'mountainlion', 'mavericks',
-                           'xp-ix','win7-ix', 'win8'):
-                self.addStep(DownloadFile(
-                             url=WithProperties(
-                             "%s/%s" % (self.supportUrlBase, self.plugins['32'])),
-                             workdir=os.path.join(
-                             self.workdirBase, "talos/base_profile"),
-                             haltOnFailure=True,
-                             ))
-                self.addStep(UnpackFile(
-                             filename=os.path.basename(self.plugins['32']),
-                             workdir=os.path.join(
-                             self.workdirBase, "talos/base_profile"),
-                             haltOnFailure=True,
-                             ))
             # 64 bit
             if self.OS in ('w764', 'ubuntu64_hw'):
                 self.addStep(DownloadFile(
@@ -6003,20 +5739,6 @@ class TalosFactory(RequestSortingBuildFactory):
                          filename=os.path.basename(pageset),
                          workdir=os.path.join(
                          self.workdirBase, "talos/page_load_test"),
-                         haltOnFailure=True,
-                         ))
-
-    def addAddOnInstallSteps(self):
-        for addOn in self.talosAddOns:
-            self.addStep(DownloadFile(
-                         url=WithProperties(
-                             "%s/%s" % (self.supportUrlBase, addOn)),
-                         workdir=os.path.join(self.workdirBase, "talos"),
-                         haltOnFailure=True,
-                         ))
-            self.addStep(UnpackFile(
-                         filename=os.path.basename(addOn),
-                         workdir=os.path.join(self.workdirBase, "talos"),
                          haltOnFailure=True,
                          ))
 
@@ -6077,8 +5799,6 @@ class TalosFactory(RequestSortingBuildFactory):
                      ))
 
     def addRunTestStep(self):
-        if self.OS in ('mavericks', 'mountainlion', 'lion', 'snowleopard'):
-            self.addStep(resolution_step())
         self.addStep(talos_steps.MozillaRunPerfTests(
                      warnOnWarnings=True,
                      workdir=os.path.join(self.workdirBase, "talos/"),
@@ -6088,21 +5808,8 @@ class TalosFactory(RequestSortingBuildFactory):
                      command=self.talosCmd,
                      env=self.env)
                      )
-        if self.OS in ('mavericks', 'mountainlion', 'lion', 'snowleopard'):
-            self.addStep(resolution_step())
 
     def addRebootStep(self):
-        if self.OS in ('mavericks', 'mountainlion', 'lion',):
-            self.addStep(ShellCommand(
-                name="clear_saved_state",
-                flunkOnFailure=False,
-                warnOnFailure=False,
-                haltOnFailure=False,
-                workdir='/Users/cltbld',
-                command=['bash', '-c',
-                        'rm -rf Library/Saved\ Application\ State/*.savedState']
-            ))
-
         def do_disconnect(cmd):
             try:
                 if 'SCHEDULED REBOOT' in cmd.logs['stdio'].getText():
@@ -6139,93 +5846,6 @@ class TalosFactory(RequestSortingBuildFactory):
                          force_disconnect=do_disconnect,
                          env=self.env,
                          ))
-
-
-class RuntimeTalosFactory(TalosFactory):
-    def __init__(self, configOptions=None, plugins=None, pagesets=None,
-                 supportUrlBase=None, talosAddOns=None,
-                 *args, **kwargs):
-        if not configOptions:
-            # TalosFactory/MozillaUpdateConfig require this format for this variable
-            # MozillaUpdateConfig allows for adding additional options at runtime,
-            # which is how this factory is intended to be used.
-            configOptions = {'suites': []}
-        # For the rest of these, make them overridable with WithProperties
-        if not plugins:
-            plugins = {'32': '%(plugin)s', '64': '%(plugin)s'}
-        if not pagesets:
-            pagesets = ['%(pageset1)s', '%(pageset2)s']
-        if not supportUrlBase:
-            supportUrlBase = '%(supportUrlBase)s'
-        if not talosAddOns:
-            talosAddOns = ['%(talosAddon1)s', '%(talosAddon2)s']
-        TalosFactory.__init__(self, *args, configOptions=configOptions,
-                              plugins=plugins, pagesets=pagesets,
-                              supportUrlBase=supportUrlBase,
-                              talosAddOns=talosAddOns,
-                              **kwargs)
-
-    def addInfoSteps(self):
-        pass
-
-    def addPluginInstallSteps(self):
-        if self.plugins:
-            self.addStep(DownloadFile(
-                url=WithProperties(
-                    "%s/%s" % (self.supportUrlBase, '%(plugin)s')),
-                workdir=os.path.join(self.workdirBase, "talos/base_profile"),
-                doStepIf=lambda step: self._propertyIsSet(step, 'plugin'),
-                filename_property='plugin_base'
-            ))
-            self.addStep(UnpackFile(
-                filename=WithProperties('%(plugin_base)s'),
-                workdir=os.path.join(self.workdirBase, "talos/base_profile"),
-                doStepIf=lambda step: self._propertyIsSet(step, 'plugin')
-            ))
-
-    def addPagesetInstallSteps(self):
-        # XXX: This is really hacky, it would be better to extract the property
-        # name from the format string.
-        n = 1
-        for pageset in self.pagesets:
-            self.addStep(DownloadFile(
-                         url=WithProperties(
-                             "%s/%s" % (self.supportUrlBase, pageset)),
-                         workdir=os.path.join(
-                         self.workdirBase, "talos/page_load_test"),
-                         doStepIf=lambda step, n=n: self._propertyIsSet(
-                         step, 'pageset%d' % n),
-                         filename_property='pageset%d_base' % n
-                         ))
-            self.addStep(UnpackFile(
-                         filename=WithProperties(
-                             '%(pageset' + str(n) + '_base)s'),
-                         workdir=os.path.join(
-                         self.workdirBase, "talos/page_load_test"),
-                         doStepIf=lambda step, n=n: self._propertyIsSet(
-                         step, 'pageset%d' % n)
-                         ))
-            n += 1
-
-    def addAddOnInstallSteps(self):
-        n = 1
-        for addOn in self.talosAddOns:
-            self.addStep(DownloadFile(
-                         url=WithProperties(
-                             "%s/%s" % (self.supportUrlBase, addOn)),
-                         workdir=os.path.join(self.workdirBase, "talos"),
-                         doStepIf=lambda step, n=n: self._propertyIsSet(
-                         step, 'talosAddon%d' % n),
-                         filename_property='talosAddon%d_base' % n
-                         ))
-            self.addStep(UnpackFile(
-                         filename=WithProperties(
-                             '%(talosAddon' + str(n) + '_base)s'),
-                         workdir=os.path.join(self.workdirBase, "talos"),
-                         doStepIf=lambda step, n=n: self._propertyIsSet(
-                         step, 'talosAddon%d' % n)
-                         ))
-            n += 1
 
 
 class PartnerRepackFactory(ReleaseFactory):
