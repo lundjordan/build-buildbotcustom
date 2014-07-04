@@ -261,22 +261,6 @@ def _recentSort(builder):
     return sortfunc
 
 
-def safeNextSlave(func):
-    """Wrapper around nextSlave functions that catch exceptions , log them, and
-    choose a random slave instead"""
-    @wraps(func)
-    def _nextSlave(builder, available_slaves):
-        try:
-            return func(builder, available_slaves)
-        except Exception:
-            log.msg("Error choosing next slave for builder '%s', choosing"
-                    " randomly instead" % builder.name)
-            log.err()
-            if available_slaves:
-                return random.choice(available_slaves)
-            return None
-    return _nextSlave
-
 def _get_pending(builder):
     """Returns the pending build requests for this builder"""
     frame = inspect.currentframe()
@@ -396,11 +380,10 @@ def _nextAWSSlave(aws_wait=None, recentSort=False):
             return None
     return _nextSlave
 
-_nextAWSSlave_wait_sort = safeNextSlave(_nextAWSSlave(aws_wait=0, recentSort=True))
-_nextAWSSlave_nowait = safeNextSlave(_nextAWSSlave())
+_nextAWSSlave_wait_sort = _nextAWSSlave(aws_wait=0, recentSort=True)
+_nextAWSSlave_nowait = _nextAWSSlave()
 
 
-@safeNextSlave
 def _nextSlave(builder, available_slaves):
     # Choose the slave that was most recently on this builder
     if available_slaves:
@@ -409,7 +392,6 @@ def _nextSlave(builder, available_slaves):
         return None
 
 
-@safeNextSlave
 def _nextSlave_skip_spot(builder, available_slaves):
     if available_slaves:
         no_spot_slaves = [s for s in available_slaves if not
@@ -424,7 +406,6 @@ def _nextSlave_skip_spot(builder, available_slaves):
 def _nextIdleSlave(nReserved):
     """Return a nextSlave function that will only return a slave to run a build
     if there are at least nReserved slaves available."""
-    @safeNextSlave
     def _nextslave(builder, available_slaves):
         if len(available_slaves) <= nReserved:
             return None
@@ -432,7 +413,6 @@ def _nextIdleSlave(nReserved):
     return _nextslave
 
 
-@safeNextSlave
 def _nextOldTegra(builder, available_slaves):
     # XXX Bug 790698 hack for no android reftests on new tegras
     # Purge with fire when this is no longer needed
