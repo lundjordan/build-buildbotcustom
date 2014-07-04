@@ -580,7 +580,7 @@ def _nextAWSSlave(aws_wait=None, recentSort=False):
             return None
     return _nextSlave
 
-_nextAWSSlave_wait_sort = safeNextSlave(J(_nextAWSSlave(aws_wait=0, recentSort=True)))
+_nextAWSSlave_wait_sort = safeNextSlave(_nextAWSSlave(aws_wait=0, recentSort=True))
 _nextAWSSlave_nowait = safeNextSlave(_nextAWSSlave())
 
 
@@ -594,7 +594,6 @@ def _nextSlave(builder, available_slaves):
 
 
 @safeNextSlave
-@J
 def _nextSlave_skip_spot(builder, available_slaves):
     if available_slaves:
         no_spot_slaves = [s for s in available_slaves if not
@@ -610,7 +609,6 @@ def _nextIdleSlave(nReserved):
     """Return a nextSlave function that will only return a slave to run a build
     if there are at least nReserved slaves available."""
     @safeNextSlave
-    @J
     def _nextslave(builder, available_slaves):
         if len(available_slaves) <= nReserved:
             return None
