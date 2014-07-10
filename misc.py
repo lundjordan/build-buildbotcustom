@@ -834,6 +834,14 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     # this location for mozharness builds if we swap it out again.
     next_slave = _nextAWSSlave_wait_sort
 
+    return_codes_func = rc_eval_func({
+        0: SUCCESS,
+        1: WARNINGS,
+        2: FAILURE,
+        3: EXCEPTION,
+        4: RETRY,
+    })
+
     # look mom, no buildbot properties needed for desktop
     # mozharness builds!!
     mh_build_properties = {
@@ -857,7 +865,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     # if we do a generic dep build
     if pf.get('enable_dep', True):
         factory = makeMHFactory(config, pf, signingServers=dep_signing_servers,
-                                extra_args=base_extra_args)
+                                extra_args=base_extra_args,
+                                log_eval_func=return_codes_func)
         generic_builder = {
             'name': '%s build' % pf['base_name'],
             'builddir': base_builder_dir,
@@ -876,7 +885,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
             pf.get("mozharness_non_unified_extra_args")):
         non_unified_factory = makeMHFactory(config, pf,
                                             signingServers=dep_signing_servers,
-                                            extra_args=non_unified_extra_args)
+                                            extra_args=non_unified_extra_args,
+                                            log_eval_func=return_codes_func)
         nonunified_builder = {
             'name': '%s non-unified' % pf['base_name'],
             'builddir': '%s-nonunified' % base_builder_dir,
@@ -899,7 +909,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                                         extra_args=nightly_extra_args,
                                         triggered_schedulers=triggered_nightly_schedulers,
                                         copy_properties=['buildid', 'builduid'],
-                                        use_credentials_file=True)
+                                        use_credentials_file=True,
+                                        log_eval_func=return_codes_func)
         nightly_builder = {
             'name': '%s nightly' % pf['base_name'],
             'builddir': '%s-nightly' % base_builder_dir,
@@ -918,7 +929,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                     platform in config['pgo_platforms']):
         pgo_factory = makeMHFactory(
             config, pf, signingServers=dep_signing_servers,
-            extra_args=pgo_extra_args
+            extra_args=pgo_extra_args, log_eval_func=return_codes_func
         )
         pgo_builder = {
             'name': '%s pgo-build' % pf['base_name'],
