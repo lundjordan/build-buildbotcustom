@@ -818,11 +818,6 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
         branch_and_pool_args.extend(['--build-pool', 'production'])
     base_extra_args.extend(branch_and_pool_args)
 
-    # now lets grab the extra args for the build types we define at misc level
-    nightly_extra_args = base_extra_args + config.get(
-        'mozharness_desktop_extra_options')['nightly']
-    pgo_extra_args = base_extra_args + config.get(
-        'mozharness_desktop_extra_options')['pgo']
     # we need non_unified here since we can not create another platform in
     # config.py for non-unified. This still allows us to still define what
     # non-unifed looks like at a config.py level
@@ -903,6 +898,11 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     # if do_nightly:
     if config['enable_nightly'] and pf.get('enable_nightly', True):
+        nightly_extra_args = base_extra_args + config['mozharness_desktop_extra_options']['nightly']
+        # if this builder is a pgo platform, make the nightly build use pgo
+        if (config['pgo_strategy'] in ('periodic', 'try') and
+                platform in config['pgo_platforms']):
+            nightly_extra_args.append(config['mozharness_desktop_extra_options']['pgo'])
         # include use_credentials_file for balrog step
         nightly_factory = makeMHFactory(config, pf,
                                         signingServers=nightly_signing_servers,
@@ -926,7 +926,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     # if we_do_pgo:
     if (config['pgo_strategy'] in ('periodic', 'try') and
-                    platform in config['pgo_platforms']):
+            platform in config['pgo_platforms']):
+        pgo_extra_args = base_extra_args + config['mozharness_desktop_extra_options']['pgo']
         pgo_factory = makeMHFactory(
             config, pf, signingServers=dep_signing_servers,
             extra_args=pgo_extra_args, log_eval_func=return_codes_func
