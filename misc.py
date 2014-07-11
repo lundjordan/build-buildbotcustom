@@ -535,8 +535,8 @@ def makeMHFactory(config, pf, extra_args=None, **kwargs):
         scriptName=mh_cfg['script_name'],
         reboot_command=mh_cfg.get('reboot_command'),
         extra_args=extra_args,
-        script_timeout=pf.get('timeout', 3600),
-        script_maxtime=pf.get('maxTime', 4 * 3600),
+        script_timeout=mh_cfg.get('script_timeout', pf.get('timeout', 3600)),
+        script_maxtime=mh_cfg.get('script_maxtime', pf.get('maxtime', 4 * 3600)),
         **kwargs
     )
     return factory
