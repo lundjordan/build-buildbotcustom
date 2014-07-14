@@ -1108,7 +1108,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
         # if this builder is a pgo platform, make the nightly build use pgo
         if (config['pgo_strategy'] in ('periodic', 'try') and
                 platform in config['pgo_platforms']):
-            nightly_extra_args.append(config['mozharness_desktop_extra_options']['pgo'])
+            nightly_extra_args += config['mozharness_desktop_extra_options']['pgo']
         # include use_credentials_file for balrog step
         nightly_factory = makeMHFactory(config, pf,
                                         signingServers=nightly_signing_servers,
