@@ -1365,8 +1365,6 @@ def generateBranchObjects(config, name, secrets=None):
             # we use this condition to enable/disable on a per platform basis
             if platform in config.get('mozharness_desktop_build_platforms'):
                 # we use this condition to enable/disable on a per branch basis
-                # # XXX JLUND LOCAL DEV CHANGE
-                # if True:
                 if config.get('desktop_mozharness_builds_enabled'):
                     branchObjects['builders'].extend(
                         generateDesktopMozharnessBuilders(
