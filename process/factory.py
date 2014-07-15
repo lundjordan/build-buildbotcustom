@@ -6242,12 +6242,14 @@ class ScriptFactory(RequestSortingBuildFactory):
         ))
 
         if self.triggered_schedulers:
-            for triggered_scheduler in self.triggered_schedulers:
-                self.addStep(Trigger(
-                    schedulerNames=[triggered_scheduler],
-                    copy_properties=self.copy_properties,
-                    waitForFinish=False)
-                )
+            # XXX LOCAL HACK
+            # for triggered_scheduler in self.triggered_schedulers:
+            #     self.addStep(Trigger(
+            #         schedulerNames=[triggered_scheduler],
+            #         copy_properties=self.copy_properties,
+            #         waitForFinish=False)
+            #     )
+            pass
 
     def reboot(self):
         def do_disconnect(cmd):
