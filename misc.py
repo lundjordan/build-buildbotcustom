@@ -512,9 +512,10 @@ def mergeBuildObjects(d1, d2):
     return retval
 
 
-def makeMHFactory(config, pf, extra_args=None, **kwargs):
+def makeMHFactory(config, pf, mh_cfg=None, extra_args=None, **kwargs):
     factory_class = ScriptFactory
-    mh_cfg = pf['mozharness_config']
+    if not mh_cfg:
+        mh_cfg = pf['mozharness_config']
     if 'signingServers' in kwargs:
         if kwargs['signingServers'] is not None:
             factory_class = SigningScriptFactory
@@ -808,7 +809,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     pf = config['platforms'][platform]
 
-    base_extra_args = pf['mozharness_config'].get('extra_args', [])
+    mh_cfg = pf['mozharness_desktop_build']
+    base_extra_args = mh_cfg.get('extra_args', [])
     # let's grab the extra args that are defined at misc level
     branch_and_pool_args = []
     branch_and_pool_args.extend(['--branch', name])
@@ -859,8 +861,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     # if we do a generic dep build
     if pf.get('enable_dep', True):
-        factory = makeMHFactory(config, pf, signingServers=dep_signing_servers,
+        factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
                                 extra_args=base_extra_args,
+                                signingServers=dep_signing_servers,
                                 log_eval_func=return_codes_func)
         generic_builder = {
             'name': '%s build' % pf['base_name'],
@@ -878,9 +881,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     # if we_do_non_unified_builds:
     if (pf.get('enable_nonunified_build') and
             pf.get("mozharness_non_unified_extra_args")):
-        non_unified_factory = makeMHFactory(config, pf,
-                                            signingServers=dep_signing_servers,
+        non_unified_factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
                                             extra_args=non_unified_extra_args,
+                                            signingServers=dep_signing_servers,
                                             log_eval_func=return_codes_func)
         nonunified_builder = {
             'name': '%s non-unified' % pf['base_name'],
@@ -904,9 +907,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
                 platform in config['pgo_platforms']):
             nightly_extra_args += config['mozharness_desktop_extra_options']['pgo']
         # include use_credentials_file for balrog step
-        nightly_factory = makeMHFactory(config, pf,
-                                        signingServers=nightly_signing_servers,
+        nightly_factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
                                         extra_args=nightly_extra_args,
+                                        signingServers=nightly_signing_servers,
                                         triggered_schedulers=triggered_nightly_schedulers,
                                         copy_properties=['buildid', 'builduid'],
                                         use_credentials_file=True,
@@ -929,8 +932,8 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
             platform in config['pgo_platforms']):
         pgo_extra_args = base_extra_args + config['mozharness_desktop_extra_options']['pgo']
         pgo_factory = makeMHFactory(
-            config, pf, signingServers=dep_signing_servers,
-            extra_args=pgo_extra_args, log_eval_func=return_codes_func
+            config, pf, mh_cfg=mh_cfg, extra_args=pgo_extra_args,
+            signingServers=dep_signing_servers, log_eval_func=return_codes_func
         )
         pgo_builder = {
             'name': '%s pgo-build' % pf['base_name'],
