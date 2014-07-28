@@ -531,9 +531,9 @@ def makeMHFactory(config, pf, extra_args=None, **kwargs):
 
     factory = factory_class(
         scriptRepo=scriptRepo,
-        interpreter=mh_cfg.get('mozharness_python'),
+        interpreter=mh_cfg.get('mozharness_python', pf.get('mozharness_python')),
         scriptName=mh_cfg['script_name'],
-        reboot_command=mh_cfg.get('reboot_command'),
+        reboot_command=mh_cfg.get('reboot_command', pf.get('reboot_command')),
         extra_args=extra_args,
         script_timeout=mh_cfg.get('script_timeout', pf.get('timeout', 3600)),
         script_maxtime=mh_cfg.get('script_maxtime', pf.get('maxtime', 4 * 3600)),
@@ -896,7 +896,7 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
         desktop_mh_builders.append(nonunified_builder)
         builds_created['done_nonunified_build'] = True
 
-    # if do_nightly:
+    # if do nightly:
     if config['enable_nightly'] and pf.get('enable_nightly', True):
         nightly_extra_args = base_extra_args + config['mozharness_desktop_extra_options']['nightly']
         # if this builder is a pgo platform, make the nightly build use pgo
@@ -1009,12 +1009,9 @@ def generateBranchObjects(config, name, secrets=None):
         pf = config['platforms'][platform]
         base_name = pf['base_name']
 
-        # now that we have FF desktop builds through mozharness, we need to
-        # figure out if we are doing a FF desktop mozharness build for this
-        # job or not. For FF desktop, let's not modify the buildernames like
-        # we do for other mozharn builds (b2g, spider, etc)
-        if ('mozharness_config' in pf and
-                platform not in config.get('mozharness_desktop_build_platforms')):
+        if 'mozharness_config' in pf:
+            # this is a spider or b2g build. mozharness desktop builds use same
+            # scheduling/naming logic as the non mozharness equivalent.
             if pf.get('enable_dep', True):
                 buildername = '%s_dep' % pf['base_name']
                 builders.append(buildername)
@@ -1352,108 +1349,105 @@ def generateBranchObjects(config, name, secrets=None):
             'done_nonunified_build': False,  # generic pf + nonunified
         }
 
-        if 'mozharness_config' in pf:
+        if 'mozharness_desktop_build' in pf:
+            # platform is a desktop pf and is able to do use mozharness
+            if config.get('desktop_mozharness_builds_enabled'):
+                # branch has desktop mozharness builds enabled
+                branchObjects['builders'].extend(
+                    generateDesktopMozharnessBuilders(
+                        name, platform, config, secrets,
+                        l10nNightlyBuilders, builds_created=builder_tracker
+                    )
+                )
+            # now crawl outside this condition and see what builders are left
+            #  to do in MBF land
+            # *NOTE: once we implement everything, we do not need to check below
+            pass  # keep going
+        elif 'mozharness_config' in pf:
+            # this is not a desktop mozharness build
+            # e.g. it could be b2g or spider)
+
+            # at the end of this block we 'continue' because we have
+            # finished all the builders needed for this platform and
+            # there is nothing left to do
             if 'mozharness_repo_url' in pf:
                 config['mozharness_repo_url'] = pf['mozharness_repo_url']
 
-            # First, let's see if this is a desktop mozharness build
-            # if it is, and the branch has it enabled, create the builders it
-            # supports.
-            # if it is not a desktop mozharness build, follow the mozharness
-            # builder logic we had before
+            factory = makeMHFactory(config, pf,
+                                    signingServers=secrets.get(pf.get('dep_signing_servers')),
+                                    use_credentials_file=True)
+            builder = {
+                'name': '%s_dep' % pf['base_name'],
+                'slavenames': pf['slaves'],
+                'nextSlave': _nextAWSSlave_wait_sort,
+                'builddir': '%s_dep' % pf['base_name'],
+                'slavebuilddir': normalizeName('%s_dep' % pf['base_name']),
+                'factory': factory,
+                'category': name,
+                'properties': {
+                    'branch': name,
+                    'platform': platform,
+                    'product': pf['stage_product'],
+                    'repo_path': config['repo_path'],
+                    'script_repo_revision': pf.get('mozharness_tag', config['mozharness_tag']),
+                    'hgurl': config.get('hgurl'),
+                    'base_mirror_urls': config.get('base_mirror_urls'),
+                    'base_bundle_urls': config.get('base_bundle_urls'),
+                    'tooltool_url_list': config.get('tooltool_url_list'),
+                    'mock_target': pf.get('mock_target'),
+                    'upload_ssh_server': config.get('stage_server'),
+                    'upload_ssh_user': config.get('stage_username'),
+                    'upload_ssh_key': config.get('stage_ssh_key'),
+                }
+            }
+            if pf.get('enable_dep', True):
+                branchObjects['builders'].append(builder)
+            elif pf.get('enable_periodic', False):
+                builder['name'] = '%s_periodic' % pf['base_name']
+                branchObjects['builders'].append(builder)
 
-            # we use this condition to enable/disable on a per platform basis
-            if platform in config.get('mozharness_desktop_build_platforms'):
-                # we use this condition to enable/disable on a per branch basis
-                if config.get('desktop_mozharness_builds_enabled'):
-                    branchObjects['builders'].extend(
-                        generateDesktopMozharnessBuilders(
-                            name, platform, config, secrets,
-                            l10nNightlyBuilders, builds_created=builder_tracker
-                        )
-                    )
-                # now crawl outside this 'mozharness_config' condition and see
-                # what builders are left to do in MBF land
-                # *NOTE: once we implement all the ones below (xul, valgrind,
-                # etc) then we don't have to see what's left
-                pass  # keep going below!
-            else:  # this is not a desktop mozharness build (eg: b2g or spider)
-                # at the end of this else case we 'continue' becasue we have
-                # finished all the builders needed for this platform and
-                # there is nothing left to do
-                factory = makeMHFactory(config, pf, signingServers=secrets.get(
-                    pf.get('dep_signing_servers')),
-                    use_credentials_file=True)
-                builder = {
-                    'name': '%s_dep' % pf['base_name'],
+            if pf.get('enable_nonunified_build'):
+                # We need a new factory for new extra_args
+                extra_args = pf['mozharness_config'].get('extra_args', [])[:]
+                extra_args += pf['mozharness_config'].get('non_unified_extra_args', [])
+                non_unified_factory = makeMHFactory(
+                    config, pf, extra_args=extra_args,
+                    signingServers=secrets.get(pf.get('dep_signing_servers')),
+                    use_credentials_file=True
+                )
+                non_unified_builder = {
+                    'name': '%s_nonunified' % pf['base_name'],
                     'slavenames': pf['slaves'],
                     'nextSlave': _nextAWSSlave_wait_sort,
-                    'builddir': '%s_dep' % pf['base_name'],
-                    'slavebuilddir': normalizeName('%s_dep' % pf['base_name']),
+                    'builddir': '%s_nonunified' % pf['base_name'],
+                    'slavebuilddir': normalizeName('%s_nonunified' % pf['base_name']),
+                    'factory': non_unified_factory,
+                    'category': name,
+                    'properties': builder['properties'].copy(),
+                }
+                branchObjects['builders'].append(non_unified_builder)
+
+            if pf.get('enable_nightly'):
+                if pf.get('dep_signing_servers') != pf.get('nightly_signing_servers'):
+                    # We need a new factory for this because our signing
+                    # servers are different
+                    factory = makeMHFactory(config, pf, signingServers=secrets.get(pf.get('nightly_signing_servers')),
+                                            use_credentials_file=True)
+
+                nightly_builder = {
+                    'name': '%s_nightly' % pf['base_name'],
+                    'slavenames': pf['slaves'],
+                    'nextSlave': _nextAWSSlave_wait_sort,
+                    'builddir': '%s_nightly' % pf['base_name'],
+                    'slavebuilddir': normalizeName('%s_nightly' % pf['base_name']),
                     'factory': factory,
                     'category': name,
-                    'properties': {
-                        'branch': name,
-                        'platform': platform,
-                        'product': pf['stage_product'],
-                        'repo_path': config['repo_path'],
-                        'script_repo_revision': pf.get('mozharness_tag', config['mozharness_tag']),
-                        'hgurl': config.get('hgurl'),
-                        'base_mirror_urls': config.get('base_mirror_urls'),
-                        'base_bundle_urls': config.get('base_bundle_urls'),
-                        'tooltool_url_list': config.get('tooltool_url_list'),
-                        'mock_target': pf.get('mock_target'),
-                        'upload_ssh_server': config.get('stage_server'),
-                        'upload_ssh_user': config.get('stage_username'),
-                        'upload_ssh_key': config.get('stage_ssh_key'),
-                    }
+                    'properties': builder['properties'].copy(),
                 }
-                if pf.get('enable_dep', True):
-                    branchObjects['builders'].append(builder)
-                elif pf.get('enable_periodic', False):
-                    builder['name'] = '%s_periodic' % pf['base_name']
-                    branchObjects['builders'].append(builder)
-
-                if pf.get('enable_nonunified_build'):
-                    # We need a new factory for new extra_args
-                    extra_args = pf['mozharness_config'].get('extra_args', [])[:]
-                    extra_args += pf['mozharness_config'].get('non_unified_extra_args', [])
-                    non_unified_factory = makeMHFactory(config, pf, extra_args=extra_args,
-                                            signingServers=secrets.get(pf.get('dep_signing_servers')),
-                                            use_credentials_file=True)
-                    non_unified_builder = {
-                        'name': '%s_nonunified' % pf['base_name'],
-                        'slavenames': pf['slaves'],
-                        'nextSlave': _nextAWSSlave_wait_sort,
-                        'builddir': '%s_nonunified' % pf['base_name'],
-                        'slavebuilddir': normalizeName('%s_nonunified' % pf['base_name']),
-                        'factory': non_unified_factory,
-                        'category': name,
-                        'properties': builder['properties'].copy(),
-                    }
-                    branchObjects['builders'].append(non_unified_builder)
-
-                if pf.get('enable_nightly'):
-                    if pf.get('dep_signing_servers') != pf.get('nightly_signing_servers'):
-                        # We need a new factory for this because our signing
-                        # servers are different
-                        factory = makeMHFactory(config, pf, signingServers=secrets.get(pf.get('nightly_signing_servers')),
-                                                use_credentials_file=True)
-
-                    nightly_builder = {
-                        'name': '%s_nightly' % pf['base_name'],
-                        'slavenames': pf['slaves'],
-                        'nextSlave': _nextAWSSlave_wait_sort,
-                        'builddir': '%s_nightly' % pf['base_name'],
-                        'slavebuilddir': normalizeName('%s_nightly' % pf['base_name']),
-                        'factory': factory,
-                        'category': name,
-                        'properties': builder['properties'].copy(),
-                    }
-                    nightly_builder['properties']['nightly_build'] = True
-                    branchObjects['builders'].append(nightly_builder)
-                # Nothing else to do for this builder
-                continue
+                nightly_builder['properties']['nightly_build'] = True
+                branchObjects['builders'].append(nightly_builder)
+            # Nothing else to do for this builder
+            continue
 
         # The stage platform needs to be used by the factory __init__ methods
         # as well as the log handler status target.  Instead of repurposing the
@@ -2053,6 +2047,73 @@ def generateBranchObjects(config, name, secrets=None):
                     }
                     branchObjects['builders'].append(
                         mozilla2_l10n_nightly_builder)
+
+        # end do_nightly
+
+        # enable mozharness desktop repacks
+        # mozharnes repacks are enabled only on ash
+        # standard repacks might be enabled there as well.
+        # this is expected for early versions of desktop_repacks in mozharness
+        if pf.get('desktop_mozharness_repacks_enabled'):
+            l10n_builders = []
+            platform_env = pf['env'].copy()
+            builder_env = platform_env.copy()
+            # reboot command and python interpreter are defined per platform
+            mozharness_python = pf.get('mozharness_python')
+            reboot_command = pf['reboot_command']
+            scriptRepo = '%s%s' % (config['hgurl'],
+                                   config['mozharness_repo_path'])
+            # repacks specific configuration is in:
+            # platform > mozharness_desktop_l10n
+            repacks = pf['mozharness_desktop_l10n']
+            scriptName = repacks['scriptName']
+            l10n_chunks = repacks['l10n_chunks']
+            use_credentials_file = repacks['use_credentials_file']
+            repack_config = repacks['config']
+            # desktop repacks run in chunks...
+            for n in range(1, l10n_chunks + 1):
+                l10n_scheduler_name = '%s-%s-l10n_%s' % (name, platform, str(n))
+                builddir = '%s-%s-l10n_%s' % (name, platform, str(n))
+                builderName = "%s l10n %s/%s" % \
+                    (pf['base_name'], n, l10n_chunks)
+                l10n_builders.append(builderName)
+                extra_args = ['--config', repack_config,
+                              '--total-chunks', str(l10n_chunks),
+                              '--this-chunk', str(n)]
+                signing_servers = secrets.get(pf.get('nightly_signing_servers'))
+                factory = SigningScriptFactory(
+                    signingServers=signing_servers,
+                    scriptRepo=scriptRepo,
+                    scriptName=scriptName,
+                    use_credentials_file=use_credentials_file,
+                    interpreter=mozharness_python,
+                    extra_args=extra_args,
+                    reboot_command=reboot_command,
+                )
+                slavebuilddir = normalizeName(builddir, pf['stage_product'])
+                branchObjects['builders'].append({
+                    'name': builderName,
+                    'slavenames': pf.get('slaves'),
+                    'builddir': builddir,
+                    'slavebuilddir': slavebuilddir,
+                    'factory': factory,
+                    'category': name,
+                    'nextSlave': _nextAWSSlave_wait_sort,
+                    'properties': {'branch': name,
+                                   'builddir': '%s-l10n_%s' % (builddir, str(n)),
+                                   'stage_platform': stage_platform,
+                                   'product': pf['stage_product'],
+                                   'platform': platform,
+                                   'slavebuilddir': slavebuilddir,
+                                   'script_repo_revision': config['mozharness_tag'], },
+                    'env': builder_env
+                })
+
+                branchObjects["schedulers"].append(Triggerable(
+                    name=l10n_scheduler_name,
+                    builderNames=l10n_builders
+                ))
+                triggeredSchedulers = [l10n_scheduler_name]
 
         # We still want l10n_dep builds if nightlies are off
         if config['enable_l10n'] and platform in config['l10n_platforms'] and \
