@@ -6058,7 +6058,7 @@ class ScriptFactory(RequestSortingBuildFactory):
                  use_mock=False, mock_target=None,
                  mock_packages=None, mock_copyin_files=None,
                  triggered_schedulers=None, env={}, copy_properties=None,
-                 properties_file='buildprops.json'):
+                 properties_file='buildprops.json', script_repo_cache=None):
         BuildFactory.__init__(self)
         self.script_timeout = script_timeout
         self.log_eval_func = log_eval_func
@@ -6074,22 +6074,9 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.env = env.copy()
         self.use_credentials_file = use_credentials_file
         self.copy_properties = copy_properties or []
+        self.script_repo_cache = script_repo_cache
         if platform and 'win' in platform:
             self.get_basedir_cmd = ['cd']
-        if scriptName[0] == '/':
-            script_path = scriptName
-        else:
-            script_path = 'scripts/%s' % scriptName
-        if interpreter:
-            if isinstance(interpreter, (tuple, list)):
-                self.cmd = list(interpreter) + [script_path]
-            else:
-                self.cmd = [interpreter, script_path]
-        else:
-            self.cmd = [script_path]
-
-        if extra_args:
-            self.cmd.extend(extra_args)
 
         self.addStep(SetBuildProperty(
             property_name='master',
@@ -6122,35 +6109,77 @@ class ScriptFactory(RequestSortingBuildFactory):
             command=['rm', '-rf', 'properties'],
             workdir=".",
         ))
-        self.addStep(ShellCommand(
-            name="clobber_scripts",
-            command=['rm', '-rf', 'scripts'],
-            workdir=".",
-            haltOnFailure=True,
-            log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-        ))
-        self.addStep(MercurialCloneCommand(
-            name="clone_scripts",
-            command=[hg_bin, 'clone', scriptRepo, 'scripts'],
-            workdir=".",
-            haltOnFailure=True,
-            retry=False,
-            log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-        ))
-        self.addStep(ShellCommand(
-            name="update_scripts",
-            command=[hg_bin, 'update', '-C', '-r',
-                     WithProperties('%(script_repo_revision:-default)s')],
-            haltOnFailure=True,
-            workdir='scripts'
-        ))
-        self.addStep(SetProperty(
-            name='get_script_repo_revision',
-            property='script_repo_revision',
-            command=[hg_bin, 'id', '-i'],
-            workdir='scripts',
-            haltOnFailure=False,
-        ))
+
+        if script_repo_cache:
+            self.addStep(ShellCommand(
+                name="pull_latest_script_changes",
+                command=[hg_bin, 'pull'],
+                haltOnFailure=True,
+                workdir=script_repo_cache,
+            ))
+            self.addStep(ShellCommand(
+                name="update_scripts",
+                command=[hg_bin, 'update', '-C', '-r',
+                         WithProperties('%(script_repo_revision:-default)s')],
+                haltOnFailure=True,
+                workdir=script_repo_cache,
+            ))
+            self.addStep(SetProperty(
+                name='get_script_repo_revision',
+                property='script_repo_revision',
+                command=[hg_bin, 'id', '-i'],
+                workdir=script_repo_cache,
+                haltOnFailure=False,
+                ))
+            script_path = '%s/%s' % (script_repo_cache, scriptName)
+        else:
+            # fall back to clobbering + cloning script repo
+            self.addStep(ShellCommand(
+                name="clobber_scripts",
+                command=['rm', '-rf', 'scripts'],
+                workdir=".",
+                haltOnFailure=True,
+                log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
+            ))
+            self.addStep(MercurialCloneCommand(
+                name="clone_scripts",
+                command=[hg_bin, 'clone', scriptRepo, 'scripts'],
+                workdir=".",
+                haltOnFailure=True,
+                retry=False,
+                log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
+            ))
+            self.addStep(ShellCommand(
+                name="update_scripts",
+                command=[hg_bin, 'update', '-C', '-r',
+                         WithProperties('%(script_repo_revision:-default)s')],
+                haltOnFailure=True,
+                workdir='scripts'
+            ))
+            self.addStep(SetProperty(
+                name='get_script_repo_revision',
+                property='script_repo_revision',
+                command=[hg_bin, 'id', '-i'],
+                workdir='scripts',
+                haltOnFailure=False,
+            ))
+            if scriptName[0] == '/':
+                script_path = scriptName
+            else:
+                script_path = 'scripts/%s' % scriptName
+
+        if interpreter:
+            if isinstance(interpreter, (tuple, list)):
+                self.cmd = list(interpreter) + [script_path]
+            else:
+                self.cmd = [interpreter, script_path]
+        else:
+            self.cmd = [script_path]
+
+        if extra_args:
+            self.cmd.extend(extra_args)
+
+
         if use_credentials_file:
             self.addStep(FileDownload(
                 mastersrc=os.path.join(os.getcwd(), 'BuildSlaves.py'),

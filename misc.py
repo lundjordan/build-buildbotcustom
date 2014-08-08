@@ -524,6 +524,10 @@ def makeMHFactory(config, pf, mh_cfg=None, extra_args=None, **kwargs):
 
     scriptRepo = config.get('mozharness_repo_url',
                             '%s%s' % (config['hgurl'], config['mozharness_repo_path']))
+    script_repo_cache = None
+    if config.get('use_mozharness_repo_cache'):  # branch supports it
+        script_repo_cache = mh_cfg.get('mozharness_repo_cache',
+                                       pf.get('mozharness_repo_cache'))
     if 'env' in pf:
         kwargs['env'] = pf['env'].copy()
 
@@ -538,6 +542,7 @@ def makeMHFactory(config, pf, mh_cfg=None, extra_args=None, **kwargs):
         extra_args=extra_args,
         script_timeout=mh_cfg.get('script_timeout', pf.get('timeout', 3600)),
         script_maxtime=mh_cfg.get('script_maxtime', pf.get('maxTime', 4 * 3600)),
+        script_repo_cache=script_repo_cache,
         **kwargs
     )
     return factory
