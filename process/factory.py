@@ -6310,19 +6310,13 @@ class ScriptFactory(RequestSortingBuildFactory):
             except:
                 pass
             return False
-        if self.script_repo_cache:
-            # we either use mozharness' copy of tools count_and_reboot or a
-            # simple `sudo reboot`. In both cases, this should be safe to do
-            work_dir = self.script_repo_cache
-        else:
-            work_dir = '.'
         if self.reboot_command:
             self.addStep(DisconnectStep(
                 name='reboot',
                 flunkOnFailure=False,
                 warnOnFailure=False,
                 alwaysRun=True,
-                workdir=work_dir,
+                workdir='.',
                 description="reboot",
                 command=self.reboot_command,
                 force_disconnect=do_disconnect,
