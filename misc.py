@@ -1751,6 +1751,10 @@ def generateBranchObjects(config, name, secrets=None):
             multiargs['mozharnessMultiOptions'] = pf.get(
                 'mozharness_multi_options')
 
+        mozharness_repo_cache = None
+        if config.get('use_mozharness_repo_cache'):  # branch supports it
+            mozharness_repo_cache = pf.get('mozharness_repo_cache')
+
         # Some platforms shouldn't do dep builds (i.e. RPM)
         if pf.get('enable_dep', True):
             factory_kwargs = {
@@ -1818,6 +1822,7 @@ def generateBranchObjects(config, name, secrets=None):
                 'gaiaLanguagesScript': pf.get('gaia_languages_script', 'scripts/b2g_desktop_multilocale.py'),
                 'gaiaL10nRoot': config.get('gaia_l10n_root'),
                 'mozharnessRepoPath': config.get('mozharness_repo_path'),
+                'mozharness_repo_cache': mozharness_repo_cache,
                 'mozharnessTag': config.get('mozharness_tag'),
                 'geckoL10nRoot': config.get('gecko_l10n_root'),
                 'geckoLanguagesFile': pf.get('gecko_languages_file'),
