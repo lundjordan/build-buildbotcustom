@@ -825,6 +825,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                  compareLocalesTag='RELEASE_AUTOMATION',
                  mozharnessRepoPath=None,
                  mozharnessTag='default',
+                 mozharness_repo_cache=None,
                  multiLocaleScript=None,
                  multiLocaleConfig=None,
                  mozharnessMultiOptions=None,
@@ -1038,14 +1039,20 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             self.addStep(ShellCommand(command=['ccache', '-z'],
                                       name="clear_ccache_stats", warnOnFailure=False,
                                       flunkOnFailure=False, haltOnFailure=False, env=self.env))
-        if mozharnessRepoPath:
+        if mozharnessRepoPath and (multiLocale or gaiaLanguagesFile):
             assert mozharnessRepoPath and mozharnessTag
             self.mozharnessRepoPath = mozharnessRepoPath
             self.mozharnessTag = mozharnessTag
+            self.mozharness_repo_cache = mozharness_repo_cache
+
+            self.mozharness_path = 'mozharness'  # relative to our work dir
+            if self.mozharness_repo_cache:
+                # in this case, we need to give it an absolute path as it
+                # won't be in our work dir
+                self.mozharness_path = self.mozharness_repo_cache
             self.addMozharnessRepoSteps()
         if multiLocale:
             assert compareLocalesRepoPath and compareLocalesTag
-            assert mozharnessRepoPath and mozharnessTag
             assert multiLocaleScript and multiLocaleConfig
             if mozharnessMultiOptions:
                 self.mozharnessMultiOptions = mozharnessMultiOptions
@@ -1097,30 +1104,45 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             self.addPeriodicRebootSteps()
 
     def addMozharnessRepoSteps(self):
-        self.addStep(ShellCommand(
-            name='rm_mozharness',
-            command=['rm', '-rf', 'mozharness'],
-            description=['removing', 'mozharness'],
-            descriptionDone=['remove', 'mozharness'],
-            haltOnFailure=True,
-            workdir='.',
-        ))
-        self.addStep(MercurialCloneCommand(
-            name='hg_clone_mozharness',
-            command=['hg', 'clone', self.getRepository(
-                self.mozharnessRepoPath), 'mozharness'],
-            description=['checking', 'out', 'mozharness'],
-            descriptionDone=['checkout', 'mozharness'],
-            haltOnFailure=True,
-            workdir='.',
-        ))
-        self.addStep(ShellCommand(
-            name='hg_update_mozharness',
-            command=['hg', 'update', '-r', self.mozharnessTag],
-            description=['updating', 'mozharness', 'to', self.mozharnessTag],
-            workdir='mozharness',
-            haltOnFailure=True
-        ))
+        if self.mozharness_repo_cache:
+            self.addStep(ShellCommand(
+                name="pull_latest_script_changes",
+                command=['hg', 'pull'],
+                haltOnFailure=True,
+                workdir=self.mozharness_repo_cache,
+            ))
+            self.addStep(ShellCommand(
+                name="update_scripts",
+                command=['hg', 'update', '-C', '-r', self.mozharnessTag],
+                haltOnFailure=True,
+                workdir=self.mozharness_repo_cache,
+            ))
+        else:
+            # fall back to local mozharness full clobber/clone
+            self.addStep(ShellCommand(
+                name='rm_mozharness',
+                command=['rm', '-rf', 'mozharness'],
+                description=['removing', 'mozharness'],
+                descriptionDone=['remove', 'mozharness'],
+                haltOnFailure=True,
+                workdir='.',
+            ))
+            self.addStep(MercurialCloneCommand(
+                name='hg_clone_mozharness',
+                command=['hg', 'clone', self.getRepository(
+                    self.mozharnessRepoPath), 'mozharness'],
+                description=['checking', 'out', 'mozharness'],
+                descriptionDone=['checkout', 'mozharness'],
+                haltOnFailure=True,
+                workdir='.',
+            ))
+            self.addStep(ShellCommand(
+                name='hg_update_mozharness',
+                command=['hg', 'update', '-r', self.mozharnessTag],
+                description=['updating', 'mozharness', 'to', self.mozharnessTag],
+                workdir='mozharness',
+                haltOnFailure=True
+            ))
 
     def addMultiLocaleRepoSteps(self):
         name = self.compareLocalesRepoPath.rstrip('/').split('/')[-1]
@@ -1241,7 +1263,8 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         if self.gaiaLanguagesFile:
             languagesFile = '%(basedir)s/build/gaia/' + \
                 self.gaiaLanguagesFile
-            cmd = ['python', 'mozharness/%s' % self.gaiaLanguagesScript,
+            cmd = ['python', '%s/%s' % (self.mozharness_path,
+                                        self.gaiaLanguagesScript),
                    '--pull',
                    '--gaia-languages-file', WithProperties(languagesFile),
                    '--gaia-l10n-root', self.gaiaL10nRoot,
@@ -1709,7 +1732,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
     def addUploadSteps(self):
         if self.multiLocale:
             self.doUpload(postUploadBuildDir='en-US')
-            cmd = ['python', 'mozharness/%s' % self.multiLocaleScript,
+            cmd = ['python', '%s/%s' % (self.mozharness_path, self.multiLocaleScript),
                    '--config-file', self.multiLocaleConfig]
             if self.multiLocaleMerge:
                 cmd.append('--merge-locales')
