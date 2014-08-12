@@ -1829,6 +1829,7 @@ def generateBranchObjects(config, name, secrets=None):
                 'gaiaLanguagesScript': pf.get('gaia_languages_script', 'scripts/b2g_desktop_multilocale.py'),
                 'gaiaL10nRoot': config.get('gaia_l10n_root'),
                 'mozharness_repo_cache': mozharness_repo_cache,
+                'tools_repo_cache': pf.get('tools_repo_cache'),
                 'mozharnessTag': config.get('mozharness_tag'),
                 'geckoL10nRoot': config.get('gecko_l10n_root'),
                 'geckoLanguagesFile': pf.get('gecko_languages_file'),
@@ -2158,6 +2159,8 @@ def generateBranchObjects(config, name, secrets=None):
                     geckoL10nRoot=config.get('gecko_l10n_root'),
                     geckoLanguagesFile=pf.get('gecko_languages_file'),
                     enable_pymake=enable_pymake,
+                    mozharness_repo_cache=mozharness_repo_cache,
+                    tools_repo_cache=pf.get('tools_repo_cache'),
                     **nightly_kwargs
                 )
 

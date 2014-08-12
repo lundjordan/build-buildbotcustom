@@ -826,6 +826,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                  mozharnessRepoPath=None,
                  mozharnessTag='default',
                  mozharness_repo_cache=None,
+                 tools_repo_cache=None,
                  multiLocaleScript=None,
                  multiLocaleConfig=None,
                  mozharnessMultiOptions=None,
@@ -927,6 +928,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         self.multiLocaleScript = multiLocaleScript
         self.multiLocaleConfig = multiLocaleConfig
         self.multiLocaleMerge = multiLocaleMerge
+        self.tools_repo_cache = tools_repo_cache
 
         assert len(self.tooltool_url_list) <= 1, "multiple urls not currently supported by tooltool"
 
@@ -1106,20 +1108,29 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
 
     def addMozharnessRepoSteps(self):
         if self.mozharness_repo_cache:
+            # all slaves bar win tests have a copy of hgtool in their path.
+            # However let's use runner's checkout version like we do with
+            # script_repo_cache as we want these cache repos to be the
+            # canonical truth as we roll out runner
+            assert self.tools_repo_cache
+            hgtool_path = os.path.join(self.tools_repo_cache,
+                                       'buildfarm',
+                                       'utils',
+                                       'hgtool.py')
+            hgtool_cmd = [
+                'python', hgtool_path, '--purge',
+                '-r', WithProperties('%(script_repo_revision:-default)s'),
+                self.getRepository(self.mozharnessRepoPath),
+                self.mozharness_repo_cache
+            ]
             self.addStep(ShellCommand(
-                name="pull_latest_script_changes",
-                command=['hg', 'pull'],
-                haltOnFailure=True,
-                workdir=self.mozharness_repo_cache,
-            ))
-            self.addStep(ShellCommand(
-                name="update_scripts",
-                command=['hg', 'update', '-C', '-r', self.mozharnessTag],
+                name="update_mozharness_repo_cache",
+                command=hgtool_cmd,
                 haltOnFailure=True,
                 workdir=self.mozharness_repo_cache,
             ))
         else:
-            # fall back to local mozharness full clobber/clone
+            # fall back to legacy local mozharness full clobber/clone
             self.addStep(ShellCommand(
                 name='rm_mozharness',
                 command=['rm', '-rf', 'mozharness'],
@@ -6152,13 +6163,6 @@ class ScriptFactory(RequestSortingBuildFactory):
                 haltOnFailure=True,
                 workdir=self.script_repo_cache,
             ))
-            self.addStep(SetProperty(
-                name='get_script_repo_revision',
-                property='script_repo_revision',
-                command=[hg_bin, 'id', '-i'],
-                workdir=self.script_repo_cache,
-                haltOnFailure=False,
-            ))
             script_path = '%s/%s' % (script_repo_cache, scriptName)
         else:
             # fall back to legacy clobbering + cloning script repo
@@ -6184,17 +6188,18 @@ class ScriptFactory(RequestSortingBuildFactory):
                 haltOnFailure=True,
                 workdir='scripts'
             ))
-            self.addStep(SetProperty(
-                name='get_script_repo_revision',
-                property='script_repo_revision',
-                command=[hg_bin, 'id', '-i'],
-                workdir='scripts',
-                haltOnFailure=False,
-            ))
             if scriptName[0] == '/':
                 script_path = scriptName
             else:
                 script_path = 'scripts/%s' % scriptName
+
+        self.addStep(SetProperty(
+            name='get_script_repo_revision',
+            property='script_repo_revision',
+            command=[hg_bin, 'id', '-i'],
+            workdir='scripts',
+            haltOnFailure=False,
+        ))
 
         if interpreter:
             if isinstance(interpreter, (tuple, list)):
