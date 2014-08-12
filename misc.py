@@ -734,6 +734,7 @@ def makeMHFactory(config, pf, mh_cfg=None, extra_args=None, **kwargs):
     if config.get('use_mozharness_repo_cache'):  # branch supports it
         script_repo_cache = mh_cfg.get('mozharness_repo_cache',
                                        pf.get('mozharness_repo_cache'))
+
     if 'env' in pf:
         kwargs['env'] = pf['env'].copy()
 
@@ -749,6 +750,8 @@ def makeMHFactory(config, pf, mh_cfg=None, extra_args=None, **kwargs):
         script_timeout=mh_cfg.get('script_timeout', pf.get('timeout', 3600)),
         script_maxtime=mh_cfg.get('script_maxtime', pf.get('maxTime', 4 * 3600)),
         script_repo_cache=script_repo_cache,
+        tools_repo_cache=mh_cfg.get('tools_repo_cache',
+                                    pf.get('tools_repo_cache')),
         **kwargs
     )
     return factory
@@ -1734,9 +1737,13 @@ def generateBranchObjects(config, name, secrets=None):
         if pf.get('product_name') == 'b2g':
             multiargs[
                 'multiLocaleScript'] = 'scripts/b2g_desktop_multilocale.py'
+            # b2g builds require mozharness
+            multiargs['mozharnessRepoPath'] = config.get('mozharness_repo_path')
         else:
             if 'android' in platform:
                 multiargs['multiLocaleScript'] = 'scripts/multil10n.py'
+                # android builds require mozharness
+                multiargs['mozharnessRepoPath'] = config.get('mozharness_repo_path')
         if pf.get('multi_config_name'):
             multiargs['multiLocaleConfig'] = pf['multi_config_name']
         else:
@@ -1821,7 +1828,6 @@ def generateBranchObjects(config, name, secrets=None):
                 'gaiaLanguagesFile': pf.get('gaia_languages_file'),
                 'gaiaLanguagesScript': pf.get('gaia_languages_script', 'scripts/b2g_desktop_multilocale.py'),
                 'gaiaL10nRoot': config.get('gaia_l10n_root'),
-                'mozharnessRepoPath': config.get('mozharness_repo_path'),
                 'mozharness_repo_cache': mozharness_repo_cache,
                 'mozharnessTag': config.get('mozharness_tag'),
                 'geckoL10nRoot': config.get('gecko_l10n_root'),
@@ -2148,7 +2154,6 @@ def generateBranchObjects(config, name, secrets=None):
                     gaiaLanguagesScript=pf.get('gaia_languages_script',
                                                'scripts/b2g_desktop_multilocale.py'),
                     gaiaL10nRoot=config.get('gaia_l10n_root'),
-                    mozharnessRepoPath=config.get('mozharness_repo_path'),
                     mozharnessTag=config.get('mozharness_tag'),
                     geckoL10nRoot=config.get('gecko_l10n_root'),
                     geckoLanguagesFile=pf.get('gecko_languages_file'),

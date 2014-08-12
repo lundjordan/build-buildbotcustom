@@ -1039,7 +1039,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             self.addStep(ShellCommand(command=['ccache', '-z'],
                                       name="clear_ccache_stats", warnOnFailure=False,
                                       flunkOnFailure=False, haltOnFailure=False, env=self.env))
-        if mozharnessRepoPath and (multiLocale or gaiaLanguagesFile):
+        if mozharnessRepoPath:
             assert mozharnessRepoPath and mozharnessTag
             self.mozharnessRepoPath = mozharnessRepoPath
             self.mozharnessTag = mozharnessTag
@@ -1053,6 +1053,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             self.addMozharnessRepoSteps()
         if multiLocale:
             assert compareLocalesRepoPath and compareLocalesTag
+            assert mozharnessRepoPath and mozharnessTag
             assert multiLocaleScript and multiLocaleConfig
             if mozharnessMultiOptions:
                 self.mozharnessMultiOptions = mozharnessMultiOptions
@@ -6077,7 +6078,8 @@ class ScriptFactory(RequestSortingBuildFactory):
                  use_mock=False, mock_target=None,
                  mock_packages=None, mock_copyin_files=None,
                  triggered_schedulers=None, env={}, copy_properties=None,
-                 properties_file='buildprops.json', script_repo_cache=None):
+                 properties_file='buildprops.json', script_repo_cache=None,
+                 tools_repo_cache=None):
         BuildFactory.__init__(self)
         self.script_timeout = script_timeout
         self.log_eval_func = log_eval_func
@@ -6094,6 +6096,7 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.use_credentials_file = use_credentials_file
         self.copy_properties = copy_properties or []
         self.script_repo_cache = script_repo_cache
+        self.tools_repo_cache = tools_repo_cache
         if platform and 'win' in platform:
             self.get_basedir_cmd = ['cd']
 
@@ -6129,30 +6132,36 @@ class ScriptFactory(RequestSortingBuildFactory):
             workdir=".",
         ))
 
-        if script_repo_cache:
+        if self.script_repo_cache:
+            # all slaves bar win tests have a copy of hgtool on their path.
+            # However, let's use runner's checkout version like we do for
+            # script repo
+            assert self.tools_repo_cache
+            hgtool_path = os.path.join(self.tools_repo_cache,
+                                       'buildfarm',
+                                       'utils',
+                                       'hgtool.py')
+            hgtool_cmd = [
+                'python', hgtool_path, '--purge',
+                '-r', WithProperties('%(script_repo_revision:-default)s'),
+                scriptRepo, self.script_repo_cache
+            ]
             self.addStep(ShellCommand(
-                name="pull_latest_script_changes",
-                command=[hg_bin, 'pull'],
+                name="update_script_repo_cache",
+                command=hgtool_cmd,
                 haltOnFailure=True,
-                workdir=script_repo_cache,
-            ))
-            self.addStep(ShellCommand(
-                name="update_scripts",
-                command=[hg_bin, 'update', '-C', '-r',
-                         WithProperties('%(script_repo_revision:-default)s')],
-                haltOnFailure=True,
-                workdir=script_repo_cache,
+                workdir=self.script_repo_cache,
             ))
             self.addStep(SetProperty(
                 name='get_script_repo_revision',
                 property='script_repo_revision',
                 command=[hg_bin, 'id', '-i'],
-                workdir=script_repo_cache,
+                workdir=self.script_repo_cache,
                 haltOnFailure=False,
-                ))
+            ))
             script_path = '%s/%s' % (script_repo_cache, scriptName)
         else:
-            # fall back to clobbering + cloning script repo
+            # fall back to legacy clobbering + cloning script repo
             self.addStep(ShellCommand(
                 name="clobber_scripts",
                 command=['rm', '-rf', 'scripts'],
