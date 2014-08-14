@@ -1127,6 +1127,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             self.addStep(ShellCommand(
                 name="update_mozharness_repo_cache",
                 command=hgtool_cmd,
+                env=self.env,
                 haltOnFailure=True,
                 workdir=os.path.dirname(self.mozharness_repo_cache),
             ))
@@ -6161,6 +6162,7 @@ class ScriptFactory(RequestSortingBuildFactory):
             self.addStep(ShellCommand(
                 name="update_script_repo_cache",
                 command=hgtool_cmd,
+                env=self.env,
                 haltOnFailure=True,
                 workdir=os.path.dirname(self.script_repo_cache),
             ))
