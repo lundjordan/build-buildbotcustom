@@ -6159,12 +6159,20 @@ class ScriptFactory(RequestSortingBuildFactory):
                 '-r', WithProperties('%(script_repo_revision:-default)s'),
                 scriptRepo, self.script_repo_cache
             ]
-            self.addStep(ShellCommand(
-                name="update_script_repo_cache",
+            RetryingShellCommand(
+                name='update_script_repo_cache',
                 command=hgtool_cmd,
                 env=self.env,
                 haltOnFailure=True,
                 workdir=os.path.dirname(self.script_repo_cache),
+                flunkOnFailure=True,
+            )
+            self.addStep(SetProperty(
+                name='get_script_repo_revision',
+                property='script_repo_revision',
+                command=[hg_bin, 'id', '-i'],
+                workdir=self.script_repo_cache,
+                haltOnFailure=False,
             ))
             script_path = '%s/%s' % (script_repo_cache, scriptName)
         else:
@@ -6191,18 +6199,18 @@ class ScriptFactory(RequestSortingBuildFactory):
                 haltOnFailure=True,
                 workdir='scripts'
             ))
+            self.addStep(SetProperty(
+                name='get_script_repo_revision',
+                property='script_repo_revision',
+                command=[hg_bin, 'id', '-i'],
+                workdir='scripts',
+                haltOnFailure=False,
+            ))
             if scriptName[0] == '/':
                 script_path = scriptName
             else:
                 script_path = 'scripts/%s' % scriptName
 
-        self.addStep(SetProperty(
-            name='get_script_repo_revision',
-            property='script_repo_revision',
-            command=[hg_bin, 'id', '-i'],
-            workdir='scripts',
-            haltOnFailure=False,
-        ))
 
         if interpreter:
             if isinstance(interpreter, (tuple, list)):
