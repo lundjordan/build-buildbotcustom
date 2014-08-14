@@ -1128,7 +1128,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                 name="update_mozharness_repo_cache",
                 command=hgtool_cmd,
                 haltOnFailure=True,
-                workdir=self.mozharness_repo_cache,
+                workdir=os.path.dirname(self.mozharness_repo_cache),
             ))
         else:
             # fall back to legacy local mozharness full clobber/clone
@@ -6162,7 +6162,7 @@ class ScriptFactory(RequestSortingBuildFactory):
                 name="update_script_repo_cache",
                 command=hgtool_cmd,
                 haltOnFailure=True,
-                workdir=self.script_repo_cache,
+                workdir=os.path.dirname(self.script_repo_cache),
             ))
             script_path = '%s/%s' % (script_repo_cache, scriptName)
         else:
