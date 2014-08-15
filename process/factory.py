@@ -6159,7 +6159,7 @@ class ScriptFactory(RequestSortingBuildFactory):
                 '-r', WithProperties('%(script_repo_revision:-default)s'),
                 scriptRepo, self.script_repo_cache
             ]
-            self.addStep((RetryingShellCommand(
+            self.addStep(RetryingShellCommand(
                 name='update_script_repo_cache',
                 command=hgtool_cmd,
                 env=self.env,
