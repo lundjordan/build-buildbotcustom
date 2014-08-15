@@ -6159,14 +6159,14 @@ class ScriptFactory(RequestSortingBuildFactory):
                 '-r', WithProperties('%(script_repo_revision:-default)s'),
                 scriptRepo, self.script_repo_cache
             ]
-            self.addStep(RetryingShellCommand(
+            self.addStep(
                 name='update_script_repo_cache',
                 command=hgtool_cmd,
                 env=self.env,
                 haltOnFailure=True,
                 workdir=os.path.dirname(self.script_repo_cache),
                 flunkOnFailure=True,
-            ))
+            )
             self.addStep(SetProperty(
                 name='get_script_repo_revision',
                 property='script_repo_revision',
