@@ -1742,7 +1742,7 @@ def generateBranchObjects(config, name, secrets=None):
         else:
             if 'android' in platform:
                 multiargs['multiLocaleScript'] = 'scripts/multil10n.py'
-                # android builds require mozharness
+                # android nightlies require mozharness
                 multiargs['mozharnessRepoPath'] = config.get('mozharness_repo_path')
         if pf.get('multi_config_name'):
             multiargs['multiLocaleConfig'] = pf['multi_config_name']
