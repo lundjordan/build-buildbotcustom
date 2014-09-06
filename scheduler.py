@@ -25,35 +25,6 @@ from util.tuxedo import get_release_uptake
 import time
 
 
-class MultiScheduler(Scheduler):
-    """Trigger N (default three) build requests based upon the same change request"""
-    def __init__(self, numberOfBuildsToTrigger=3, **kwargs):
-        self.numberOfBuildsToTrigger = numberOfBuildsToTrigger
-        Scheduler.__init__(self, **kwargs)
-
-    # NOTE: this is overriding an internal scheduler method and may break
-    # unexpectedly!
-    def _add_build_and_remove_changes(self, t, important, unimportant):
-        all_changes = sorted(important + unimportant, key=lambda c: c.number)
-        db = self.parent.db
-        for i in range(self.numberOfBuildsToTrigger):
-            if self.treeStableTimer is None:
-                # each *important* Change gets a separate build.  Unimportant
-                # builds get ignored.
-                for c in important:
-                    ss = SourceStamp(changes=[c])
-                    ssid = db.get_sourcestampid(ss, t)
-                    self.create_buildset(ssid, "scheduler", t)
-            else:
-                ss = SourceStamp(changes=all_changes)
-                ssid = db.get_sourcestampid(ss, t)
-                self.create_buildset(ssid, "scheduler", t)
-
-        # and finally retire the changes from scheduler_changes
-        changeids = [c.number for c in all_changes]
-        db.scheduler_retire_changes(self.schedulerid, changeids, t)
-
-
 class SpecificNightly(Nightly):
     """Subclass of regular Nightly scheduler that allows you to specify a function
     that gets called to generate a sourcestamp
@@ -137,8 +108,8 @@ class PersistentScheduler(BaseScheduler):
         return now() + self.pollInterval
 
 
-class BuilderChooserScheduler(MultiScheduler):
-    compare_attrs = MultiScheduler.compare_attrs + (
+class BuilderChooserScheduler(Scheduler):
+    compare_attrs = Scheduler.compare_attrs + (
         'chooserFunc', 'prettyNames',
         'unittestPrettyNames', 'unittestSuites', 'talosSuites', 'buildbotBranch', 'buildersWithSetsMap')
 
@@ -152,7 +123,7 @@ class BuilderChooserScheduler(MultiScheduler):
         self.talosSuites = talosSuites
         self.buildbotBranch = buildbotBranch
         self.buildersWithSetsMap = buildersWithSetsMap
-        MultiScheduler.__init__(self, **kwargs)
+        Scheduler.__init__(self, **kwargs)
 
     def run(self):
         db = self.parent.db
@@ -215,25 +186,24 @@ class BuilderChooserScheduler(MultiScheduler):
                 return
 
             db = self.parent.db
-            for i in range(self.numberOfBuildsToTrigger):
-                if self.treeStableTimer is None:
-                    # each Change gets a separate build
-                    for c in all_changes:
-                        if c not in buildersPerChange:
-                            continue
-                        ss = SourceStamp(changes=[c])
-                        ssid = db.get_sourcestampid(ss, t)
-                        self.create_buildset(ssid, "scheduler", t, builderNames=buildersPerChange[c])
-                else:
-                    # Grab all builders
-                    builderNames = set()
-                    for names in buildersPerChange.values():
-                        builderNames.update(names)
-                    builderNames = list(builderNames)
-                    ss = SourceStamp(changes=all_changes)
+            if self.treeStableTimer is None:
+                # each Change gets a separate build
+                for c in all_changes:
+                    if c not in buildersPerChange:
+                        continue
+                    ss = SourceStamp(changes=[c])
                     ssid = db.get_sourcestampid(ss, t)
-                    self.create_buildset(
-                        ssid, "scheduler", t, builderNames=builderNames)
+                    self.create_buildset(ssid, "scheduler", t, builderNames=buildersPerChange[c])
+            else:
+                # Grab all builders
+                builderNames = set()
+                for names in buildersPerChange.values():
+                    builderNames.update(names)
+                builderNames = list(builderNames)
+                ss = SourceStamp(changes=all_changes)
+                ssid = db.get_sourcestampid(ss, t)
+                self.create_buildset(
+                    ssid, "scheduler", t, builderNames=builderNames)
 
             # and finally retire the changes from scheduler_changes
             changeids = [c.number for c in all_changes]
@@ -575,3 +545,50 @@ def makePropertiesScheduler(base_class, propfuncs, *args, **kw):
     S.__name__ = base_class.__name__ + "-props"
 
     return S
+
+
+class EveryNthScheduler(Scheduler):
+    """
+    Triggers jobs every Nth change, or after idleTimeout seconds have elapsed
+    since the most recent change. Set idleTimeout to None to wait forever for n changes.
+    """
+
+    compare_attrs = Scheduler.compare_attrs + ('n', 'idleTimeout')
+
+    def __init__(self, name, n, idleTimeout=None, **kwargs):
+        self.n = n
+        self.idleTimeout = idleTimeout
+
+        Scheduler.__init__(self, name=name, **kwargs)
+
+    def decide_and_remove_changes(self, t, important, unimportant):
+        """
+        Based on Scheduler.decide_and_remove_changes.
+
+        If we have n or more important changes, we should trigger jobs.
+
+        If more than idleTimeout has elapsed since the last change, we should trigger jobs.
+        """
+        if not important:
+            return None
+
+        nImportant = len(important)
+        if nImportant < self.n:
+            if not self.idleTimeout:
+                log.msg("%s: skipping with %i/%i important changes since no idle timeout" %
+                        (self.name, nImportant, self.n))
+                return
+
+            most_recent = max([c.when for c in important])
+            elapsed = int(now() - most_recent)
+
+            if self.idleTimeout and elapsed < self.idleTimeout:
+                # Haven't hit the timeout yet, so let's wait more
+                log.msg("%s: skipping with %i/%i important changes since only %i/%is have elapsed" %
+                        (self.name, nImportant, self.n, elapsed, self.idleTimeout))
+                return now() + (self.idleTimeout - elapsed)
+            log.msg("%s: triggering with %i/%i important changes since %is have elapsed" % (self.name, nImportant, self.n, elapsed))
+        else:
+            log.msg("%s: triggering since we have %i/%i important changes" % (self.name, nImportant, self.n))
+
+        return Scheduler.decide_and_remove_changes(self, t, important, unimportant)
