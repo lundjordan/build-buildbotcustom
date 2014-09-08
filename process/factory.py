@@ -6173,6 +6173,12 @@ class ScriptFactory(RequestSortingBuildFactory):
             # However, let's use runner's checkout version like we do for
             # script repo
             assert self.tools_repo_cache
+            # ScriptFactory adds the props file into its env but we don't
+            # want to pass that to the hgtool call because hgtool will assume
+            # things like we want ['sourcestamp']['branch'] to be our branch
+            # script_repo pulls from
+            hg_script_repo_env = self.env.copy()
+            hg_script_repo_env['PROPERTIES_FILE'] = 'buildprops.json'
             hgtool_path = os.path.join(self.tools_repo_cache,
                                        'buildfarm',
                                        'utils',
