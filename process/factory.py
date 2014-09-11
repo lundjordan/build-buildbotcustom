@@ -812,6 +812,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                  baseName=None, uploadPackages=True, uploadSymbols=True,
                  createSnippet=False, createPartial=False, doCleanup=True,
                  packageSDK=False, packageTests=False, mozillaDir=None,
+                 mozillaSrcDir=None,
                  enable_ccache=False, stageLogBaseUrl=None,
                  triggeredSchedulers=None, triggerBuilds=False,
                  mozconfigBranch="production", useSharedCheckouts=False,
@@ -982,11 +983,19 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
 
         # SeaMonkey/Thunderbird make use of mozillaDir. Firefox does not.
         if mozillaDir:
-            self.mozillaDir = '/%s' % mozillaDir
+            self.mozillaDir = '/%s' % (mozillaDir)
             self.mozillaObjdir = '%s%s' % (self.objdir, self.mozillaDir)
+            self.mozillaSrcDir = '%s' % self.mozillaDir
         else:
             self.mozillaDir = ''
             self.mozillaObjdir = self.objdir
+
+            # Thunderbird now doesn't have mozillaDir, but still has a
+            # mozillaSrcDir
+            if mozillaSrcDir:
+                self.mozillaSrcDir = '/%s' % (mozillaSrcDir)
+            else:
+                self.mozillaSrcDir = ''
 
         # These following variables are useful for sharing build steps (e.g.
         # update generation) with subclasses that don't use object dirs (e.g.
@@ -994,8 +1003,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         #
         # We also concatenate the baseWorkDir at the outset to avoid having to
         # do that everywhere.
-        self.mozillaSrcDir = '.%s' % self.mozillaDir
-        self.absMozillaSrcDir = '%s%s' % (self.baseWorkDir, self.mozillaDir)
+        self.absMozillaSrcDir = '%s%s' % (self.baseWorkDir, self.mozillaSrcDir)
         self.absMozillaObjDir = '%s/%s' % (
             self.baseWorkDir, self.mozillaObjdir)
 
@@ -1374,7 +1382,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         if not getattr(self, '_gotBuildInfo', False):
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                 'build/%s/dist/bin/application.ini' % self.mozillaObjdir,
                 'App', 'BuildID'],
                 property='buildid',
@@ -1384,7 +1392,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             ))
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                 'build/%s/dist/bin/application.ini' % self.mozillaObjdir,
                 'App', 'SourceStamp'],
                 property='sourcestamp',
@@ -1670,7 +1678,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         if self.productName == 'xulrunner':
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                          'build/%s/dist/bin/platform.ini' % self.mozillaObjdir,
                          'Build', 'BuildID'],
                 property='buildid',
@@ -1680,7 +1688,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
         else:
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                          'build/%s/dist/bin/application.ini' % self.mozillaObjdir,
                          'App', 'BuildID'],
                 property='buildid',
@@ -1689,7 +1697,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             ))
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                          'build/%s/dist/bin/application.ini' % self.mozillaObjdir,
                          'App', 'Version'],
                 property='appVersion',
@@ -1698,7 +1706,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
             ))
             self.addStep(SetProperty(
                 command=[
-                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaDir,
+                    'python', 'build%s/config/printconfigsetting.py' % self.mozillaSrcDir,
                          'build/%s/dist/bin/application.ini' % self.mozillaObjdir,
                          'App', 'Name'],
                 property='appName',
@@ -3008,7 +3016,8 @@ class BaseRepackFactory(MozillaBuildFactory, TooltoolMixin):
                  compareLocalesRepoPath, compareLocalesTag, stageServer,
                  stageUsername, stageSshKey=None, objdir='', platform='',
                  mozconfig=None,
-                 tree="notset", mozillaDir=None, l10nTag='default',
+                 tree="notset", mozillaDir=None, mozillaSrcDir=None,
+                 l10nTag='default',
                  mergeLocales=True,
                  testPrettyNames=False,
                  callClientPy=False,
@@ -3057,13 +3066,22 @@ class BaseRepackFactory(MozillaBuildFactory, TooltoolMixin):
         else:
             self.makeCmd = ['make']
 
+        self.linkTools = False
+
         # Mozilla subdir
         if mozillaDir:
             self.mozillaDir = '/%s' % mozillaDir
             self.mozillaSrcDir = '%s/%s' % (self.origSrcDir, mozillaDir)
+            self.linkTools = True
         else:
             self.mozillaDir = ''
-            self.mozillaSrcDir = self.origSrcDir
+            # Thunderbird doesn't have a mozilla in the objdir, but it
+            # still does for the srcdir.
+            if mozillaSrcDir:
+                self.linkTools = True
+                self.mozillaSrcDir = '%s/%s' % (self.origSrcDir, mozillaSrcDir)
+            else:
+                self.mozillaSrcDir = self.origSrcDir
 
         # self.mozillaObjdir is used in SeaMonkey's and Thunderbird's case
         self.objdir = objdir or self.origSrcDir
@@ -3191,7 +3209,7 @@ class BaseRepackFactory(MozillaBuildFactory, TooltoolMixin):
                 property='basedir',
                 workdir='.'
             ))
-        if self.mozillaDir:
+        if self.linkTools:
             self.addStep(MockCommand(**self.processCommand(
                 name='link_tools',
                 env=self.env,
@@ -3973,7 +3991,7 @@ class SingleSourceFactory(ReleaseFactory):
     def __init__(self, productName, version, baseTag, stagingServer,
                  stageUsername, stageSshKey, buildNumber, mozconfig,
                  configRepoPath, configSubDir, objdir='',
-                 mozillaDir=None, autoconfDirs=['.'], buildSpace=2,
+                 mozillaDir=None, mozillaSrcDir=None, autoconfDirs=['.'], buildSpace=2,
                  mozconfigBranch="production", appVersion=None, **kwargs):
         ReleaseFactory.__init__(self, buildSpace=buildSpace, **kwargs)
 
@@ -3991,7 +4009,12 @@ class SingleSourceFactory(ReleaseFactory):
             self.mozillaSrcDir = '%s/%s' % (self.origSrcDir, mozillaDir)
         else:
             self.mozillaDir = ''
-            self.mozillaSrcDir = self.origSrcDir
+
+            # Thunderbird now has a different srcdir to mozillaDir
+            if mozillaSrcDir:
+                self.mozillaSrcDir = '%s/%s' % (self.origSrcDir, mozillaSrcDir)
+            else:
+                self.mozillaSrcDir = self.origSrcDir
 
         # self.mozillaObjdir is used in SeaMonkey's and Thunderbird's case
         self.objdir = objdir or self.origSrcDir
@@ -4976,7 +4999,7 @@ class UnittestPackagedBuildFactory(MozillaTestFactory):
                              name='setup virtualenv',
                              command=[
                              'python', 'resources/installmozmill.py',
-                             MOZMILL_VIRTUALENV_DIR],
+                             MOZMILL_VIRTUALENV_DIR, '../mozbase'],
                              doStepIf=isVirtualenvSetup,
                              flunkOnFailure=True,
                              haltOnFailure=True,
