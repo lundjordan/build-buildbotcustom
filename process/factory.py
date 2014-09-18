@@ -6381,6 +6381,12 @@ class SigningScriptFactory(ScriptFactory):
     def __init__(self, signingServers, enableSigning=True, **kwargs):
         self.signingServers = signingServers
         self.enableSigning = enableSigning
+        self.addStep(SetProperty(
+            name='set_toolsdir',
+            command=self.get_basedir_cmd,
+            property='toolsdir',
+            workdir='scripts',
+        ))
         ScriptFactory.__init__(self, **kwargs)
 
     def runScript(self):
@@ -6400,19 +6406,6 @@ class SigningScriptFactory(ScriptFactory):
                 slavedest=token,
                 workdir='.',
                 name='download_token',
-            ))
-            # toolsdir, basedir
-            self.addStep(SetProperty(
-                name='set_toolsdir',
-                command=self.get_basedir_cmd,
-                property='toolsdir',
-                workdir='scripts',
-            ))
-            self.addStep(SetProperty(
-                name='set_basedir',
-                command=self.get_basedir_cmd,
-                property='basedir',
-                workdir='.',
             ))
             self.env['MOZ_SIGN_CMD'] = WithProperties(get_signing_cmd(
                 self.signingServers, self.env.get('PYTHON26')))
