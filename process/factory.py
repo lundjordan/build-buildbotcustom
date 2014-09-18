@@ -6126,15 +6126,12 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.mock_target = mock_target
         self.mock_packages = mock_packages
         self.mock_copyin_files = mock_copyin_files
-        self.get_basedir_cmd = ['bash', '-c', 'pwd']
         self.triggered_schedulers = triggered_schedulers
         self.env = env.copy()
         self.use_credentials_file = use_credentials_file
         self.copy_properties = copy_properties or []
         self.script_repo_cache = script_repo_cache
         self.tools_repo_cache = tools_repo_cache
-        if platform and 'win' in platform:
-            self.get_basedir_cmd = ['cd']
 
         self.addStep(SetBuildProperty(
             property_name='master',
@@ -6143,7 +6140,7 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.addStep(SetProperty(
             name='get_basedir',
             property='basedir',
-            command=self.get_basedir_cmd,
+            command=self.get_basedir_cmd(platform),
             workdir='.',
             haltOnFailure=True,
         ))
@@ -6270,6 +6267,12 @@ class ScriptFactory(RequestSortingBuildFactory):
         self.addCleanupSteps()
         self.reboot()
 
+    def get_basedir_cmd(self, platform=None):
+        if platform and 'win' in platform:
+            return ['cd']
+        else:
+            return ['bash', '-c', 'pwd']
+
     def addCleanupSteps(self):
         # remove oauth.txt file, we don't wanna to leave keys lying around
         if self.use_credentials_file:
@@ -6376,16 +6379,17 @@ class ScriptFactory(RequestSortingBuildFactory):
 
 class SigningScriptFactory(ScriptFactory):
 
-    def __init__(self, signingServers, enableSigning=True, **kwargs):
+    def __init__(self, signingServers, enableSigning=True,
+                 platform=None, **kwargs):
         self.signingServers = signingServers
         self.enableSigning = enableSigning
         self.addStep(SetProperty(
             name='set_toolsdir',
-            command=self.get_basedir_cmd,
+            command=self.get_basedir_cmd(platform),
             property='toolsdir',
             workdir='scripts',
         ))
-        ScriptFactory.__init__(self, **kwargs)
+        ScriptFactory.__init__(self, platform=platform, **kwargs)
 
     def runScript(self):
 
