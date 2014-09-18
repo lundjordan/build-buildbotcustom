@@ -6312,7 +6312,7 @@ class ScriptFactory(RequestSortingBuildFactory):
                 timeout=2700,
             ))
 
-    def runScript(self, env):
+    def runScript(self, env=None):
         if not env:
             env = self.env
         self.preRunScript()
