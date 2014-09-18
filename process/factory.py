@@ -6175,10 +6175,10 @@ class ScriptFactory(RequestSortingBuildFactory):
             assert self.tools_repo_cache
             # ScriptFactory adds the props file into its env but we don't
             # want to pass that to the hgtool call because hgtool will assume
-            # things like we want ['sourcestamp']['branch'] to be our branch
-            # script_repo pulls from
+            # things like ['sourcestamp']['branch'] should be our branch
+            # that script_repo pulls from
             hg_script_repo_env = self.env.copy()
-            hg_script_repo_env['PROPERTIES_FILE'] = 'buildprops.json'
+            hg_script_repo_env.pop('PROPERTIES_FILE', None)
             hgtool_path = os.path.join(self.tools_repo_cache,
                                        'buildfarm',
                                        'utils',
@@ -6191,7 +6191,7 @@ class ScriptFactory(RequestSortingBuildFactory):
             self.addStep(ShellCommand(
                 name='update_script_repo_cache',
                 command=hgtool_cmd,
-                env=self.env,
+                env=hg_script_repo_env,
                 haltOnFailure=True,
                 workdir=os.path.dirname(self.script_repo_cache),
                 flunkOnFailure=True,
