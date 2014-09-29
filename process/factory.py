@@ -231,6 +231,8 @@ def parse_make_upload(rc, stdout, stderr):
             retval['partialMarUrl'] = m
         elif m.find('geckoview') >= 0:
             pass
+        elif m.find('cppunit') >= 0:
+            pass
         else:
             retval['packageUrl'] = m
     return retval
@@ -2784,12 +2786,18 @@ class ReleaseBuildFactory(MercurialBuildFactory):
                 fileType='%sMar' % oldVersion,
                 haltOnFailure=True,
             )
+            self.addStep(SetBuildProperty(
+                property_name="%sBuildNumber" % oldVersion,
+                value=oldBuildNumber,
+                haltOnFailure=True,
+            ))
 
         def getPartialInfo(build, oldVersions):
             partials = []
             for v in oldVersions:
                 partials.append({
                     "previousVersion": v,
+                    "previousBuildNumber": build.getProperty("%sBuildNumber" % v),
                     "size": build.getProperty("%sMarSize" % v),
                     "hash": build.getProperty("%sMarHash" % v),
                 })
@@ -4158,7 +4166,8 @@ class ReleaseUpdatesFactory(ReleaseFactory):
                  partialUpdates,
                  ftpServer, bouncerServer, stagingServer,
                  stageUsername, stageSshKey, ausUser, ausSshKey, ausHost,
-                 ausServerUrl, hgSshKey, hgUsername, releaseChannel='release',
+                 ausServerUrl, hgSshKey, hgUsername, localTestChannel,
+                 releaseChannel='release',
                  mozRepoPath=None,
                  brandName=None, buildSpace=2, triggerSchedulers=None,
                  releaseNotesUrl=None, python='python',
@@ -4213,6 +4222,7 @@ class ReleaseUpdatesFactory(ReleaseFactory):
         self.balrog_api_root = balrog_api_root
         self.balrog_credentials_file = balrog_credentials_file
         self.balrog_username = balrog_username
+        self.testChannel = localTestChannel
 
         # The patcher config bumper needs to know the exact previous version
         self.previousVersion = str(
@@ -4274,10 +4284,7 @@ class ReleaseUpdatesFactory(ReleaseFactory):
 
         # XXX: hack alert
         if 'esr' in self.version:
-            self.testChannel = 'esrtest'
             self.channels['esrtest'] = {'dir': 'aus2.test'}
-        else:
-            self.testChannel = 'betatest'
 
     def bumpConfigs(self):
         self.addStep(RetryingMockCommand(
@@ -4494,7 +4501,7 @@ class ReleaseUpdatesFactory(ReleaseFactory):
             name='download_balrog_props',
             slavedest='buildprops_balrog.json',
             workdir='.',
-            flunkOnFailure=False,
+            flunkOnFailure=True,
         ))
         credentials_file = os.path.join(os.getcwd(),
                                         self.balrog_credentials_file)
