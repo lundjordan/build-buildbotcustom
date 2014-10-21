@@ -848,8 +848,9 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
     if config['enable_nightly'] and pf.get('enable_nightly', True):
         nightly_extra_args = base_extra_args + config['mozharness_desktop_extra_options']['nightly']
         # if this builder is a pgo platform, make the nightly build use pgo
-        if platform in config['pgo_platforms']:
-            nightly_extra_args += config['mozharness_desktop_extra_options']['pgo']
+        # XXX JLUND FOR TIMES SAKE LETS NOT MAKE NIGHTLIES USE PGO
+        # if platform in config['pgo_platforms']:
+        #     nightly_extra_args += config['mozharness_desktop_extra_options']['pgo']
         # include use_credentials_file for balrog step
         nightly_factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
                                         extra_args=nightly_extra_args,
