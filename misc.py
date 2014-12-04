@@ -1760,10 +1760,11 @@ def generateBranchObjects(config, name, secrets=None):
                         'env': builder_env
                     })
 
-                # branchObjects["schedulers"].append(Triggerable(
-                #     name=mobile_l10n_scheduler_name,
-                #     builderNames=mobile_l10n_builders
-                # ))
+                # XXX JLUND - Let's add them back in
+                branchObjects["schedulers"].append(Triggerable(
+                    name=mobile_l10n_scheduler_name,
+                    builderNames=mobile_l10n_builders
+                ))
                 triggeredSchedulers = [mobile_l10n_scheduler_name]
 
             else:  # Non-mobile l10n is done differently at this time
