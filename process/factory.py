@@ -489,23 +489,14 @@ class MozillaBuildFactory(RequestSortingBuildFactory, MockMixin):
                      log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
                      workdir='.'
                      ))
-        # XXX JLUND HACK - clone  user tools repo instead
-        # self.addStep(MercurialCloneCommand(
-        #              name='clone_buildtools',
-        #              command=['hg', 'clone', self.buildToolsRepo, 'tools'],
-        #              description=['clone', 'build tools'],
-        #              log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-        #              workdir='.',
-        #              retry=False  # We cannot use retry.py until we have this repo checked out
-        #              ))
-        self.addStep(ShellCommand(
-            name='rm_buildtools',
-            command=['git', 'clone', 'https://github.com/lundjordan/build-tools.git', '--branch', 'apk-split', 'tools'],
-            description=['clone', 'jlund user build tools'],
-            haltOnFailure=True,
-            log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-            workdir='.'
-        ))
+        self.addStep(MercurialCloneCommand(
+                     name='clone_buildtools',
+                     command=['hg', 'clone', self.buildToolsRepo, 'tools'],
+                     description=['clone', 'build tools'],
+                     log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
+                     workdir='.',
+                     retry=False  # We cannot use retry.py until we have this repo checked out
+                     ))
         self.addStep(SetProperty(
             name='set_toolsdir',
             command=['bash', '-c', 'pwd'],
