@@ -204,14 +204,12 @@ def changeContainsProduct(change, productName):
     return False
 
 
-def changeBaseTagContainsScriptRepoRevision(change, baseTag):
+def changeContainsScriptRepoRevision(change, revision):
     script_repo_revision = change.properties.getProperty("script_repo_revision")
-    baseTag = baseTag + "_"
-    if isinstance(script_repo_revision, basestring) and \
-            baseTag in script_repo_revision:
-            log.msg("baseTag '%s' IS in script_repo_revision '%s'" % (baseTag, script_repo_revision))
-            return True
-    log.msg("baseTag '%s' IS NOT in script_repo_revision '%s'" % (baseTag, script_repo_revision))
+    if script_repo_revision == revision:
+        log.msg("%s revision matches script_repo_revision %s" % (revision, script_repo_revision))
+        return True
+    log.msg("%s revision does not match script_repo_revision %s" % (revision, script_repo_revision))
     return False
 
 
@@ -660,6 +658,11 @@ def mergeRequests(builder, req1, req2):
         log.msg("mergeRequests: self-serve; returning False")
         return False
 
+    # Disable merging of nightly jobs
+    if req1.properties.getProperty('nightly_build', False) or req2.properties.getProperty('nightly_build', False):
+        log.msg("mergeRequests: nightly_build; returning False")
+        return False
+
     # We're merging a different request now; reset the state
     # This works because buildbot calls this function with the same req1 for
     # all pending requests for the builder, only req2 varies between calls.
@@ -778,7 +781,7 @@ def generateTestBuilder(config, branch_name, platform, name_prefix,
                         mozharness=False, mozharness_python=None,
                         mozharness_suite_config=None,
                         mozharness_repo=None, mozharness_tag='production',
-                        is_debug=None):
+                        script_repo_manifest=None, is_debug=None):
     builders = []
     pf = config['platforms'].get(platform, {})
     if slaves is None:
@@ -833,6 +836,7 @@ def generateTestBuilder(config, branch_name, platform, name_prefix,
             use_credentials_file=True,
             script_maxtime=suites.get('script_maxtime', 7200),
             script_timeout=suites.get('timeout', 1800),
+            script_repo_manifest=script_repo_manifest,
             reboot_command=reboot_command,
             platform=platform,
             env=mozharness_suite_config.get('env', {}),
@@ -1346,7 +1350,7 @@ def generateBranchObjects(config, name, secrets=None):
         scheduler_class = makePropertiesScheduler(
             Scheduler, [buildIDSchedFunc, buildUIDSchedFunc])
 
-    if not config.get('enable_merging', True):
+    if not config.get('enable_merging', True) or not config.get('merge_builds', True):
         nomergeBuilders.update(builders)
     # these should never, ever merge
     nomergeBuilders.update(periodicBuilders)
@@ -2789,6 +2793,7 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                                 test_builder_kwargs['mozharness_repo'] = branch_config['mozharness_repo']
                                 test_builder_kwargs['mozharness_tag'] = branch_config['mozharness_tag']
                                 test_builder_kwargs['mozharness'] = True
+                                test_builder_kwargs['script_repo_manifest'] = branch_config.get('script_repo_manifest')
                                 # allow mozharness_python to be overridden per test slave platform in case Python
                                 # not installed to a consistent location.
                                 if 'mozharness_config' in platform_config[slave_platform] and \
