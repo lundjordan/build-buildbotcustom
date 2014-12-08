@@ -1670,7 +1670,7 @@ def generateBranchObjects(config, name, secrets=None):
         else:
             if pf.get('multi_locale_config_platform'):
                 # normally we look for the mozharness config by platform. But since we have split
-                # 'android' into two platforms 'android-api-9' and 'android-api-10', this allows us
+                # 'android' into two platforms 'android-api-9' and 'android-api-11', this allows us
                 # to use the already existing '{branch}_android.json' config files for both  without
                 # having to create a dozen new duplicate ones
                 multi_config_pf = pf['multi_locale_config_platform']
