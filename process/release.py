@@ -653,10 +653,10 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
         # FIXME: the follwong hack can be removed when win64 has the same list
         # of partial update as other platforms. Check mozilla-esr38 to be sure.
         if platform in releaseConfig.get('HACK_first_released_version', {}):
-            partialUpdates_hacked = {
-                k: v for k, v in partialUpdates.iteritems() if
-                LooseVersion(k) >= LooseVersion(releaseConfig['HACK_first_released_version'][platform])
-            }
+            partialUpdates_hacked = dict([(k, v) for k, v in partialUpdates.iteritems() if
+                                          LooseVersion(k) >= LooseVersion(
+                                              releaseConfig['HACK_first_released_version'][
+                                                  platform])])
         else:
             partialUpdates_hacked = partialUpdates
         # FIXME: end of hack
