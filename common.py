@@ -9,9 +9,7 @@ def getSupportedPlatforms():
             'win64', 'android',
             'gb_armv7a_gecko', 'linux32_gecko',
             'macosx64_gecko', 'win32_gecko',
-            'linux64_gecko', 'linux32_gecko_localizer',
-            'macosx64_gecko_localizer', 'win32_gecko_localizer',
-            'linux64_gecko_localizer')
+            'linux64_gecko')
 
 
 def getPlatformFtpDir(platform):
@@ -69,7 +67,7 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'win32': 'w32',
         'win64': 'w64',
         'macosx': 'osx',
-        'macosx64': 'osx64',
+        'macosx64': 'm64',
         'linux64': 'l64',
         'android': 'and',
         'release': 'rel',
@@ -113,7 +111,6 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'thunderbird': 'tb',
         'partner': 'pner',
         'checksums': 'sums',
-        'update_verify': 'uv',
         'postrelease': 'pr',
         'spidermonkey': 'sm',
         'warnaserr': 'we',
@@ -133,8 +130,16 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'fennec_tag_l10n': 'm_tag_l10n',
         'thunderbird_tag_source': 't_tag_src',
         'thunderbird_tag_l10n': 't_tag_l10n',
+        'start_uptake_monitoring': 'ut',
+        'final': 'fnl',
+        'verification': 'vrfy',
+        'shipping': 'shp',
+        'update': 'u',
+        'verify': 'v',
+        'updates': 'upds',
     }
-    for word, replacement in mappings.iteritems():
+    for word in sorted(mappings):
+        replacement = mappings[word]
         # Regexes are slow, so make sure the word is there at all before
         # trying to do a substitution.
         if word in name:
