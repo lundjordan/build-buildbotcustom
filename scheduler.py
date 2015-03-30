@@ -303,8 +303,8 @@ class TriggerBouncerCheck(Triggerable):
         partialVersions = []
         if self.appendBuildNumber:
             version += 'build%s' % self.release_config.get('buildNumber')
-            for partialVersion, info in self.releaseConfig.get("partialUpdates").iteritems():
-                partialVersions.append("%sbuild%s" % partialVersion, info["buildNumber"])
+            for partialVersion, info in self.release_config.get("partialUpdates").iteritems():
+                partialVersions.append("%sbuild%s" % (partialVersion, info["buildNumber"]))
         if not partialVersions:
             partialVersions = self.release_config.get("partialUpdates").keys()
         d = get_release_uptake(
