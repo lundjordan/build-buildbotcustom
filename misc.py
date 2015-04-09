@@ -49,7 +49,8 @@ from buildbotcustom.common import normalizeName
 from buildbotcustom.changes.hgpoller import HgPoller, HgAllLocalesPoller
 from buildbotcustom.process.factory import NightlyBuildFactory, \
     NightlyRepackFactory, UnittestPackagedBuildFactory, \
-    TryBuildFactory, ScriptFactory, SigningScriptFactory, rc_eval_func
+    TryBuildFactory, ScriptFactory, SigningScriptFactory, rc_eval_func, \
+    PartnerRepackFactory
 from buildbotcustom.scheduler import BuilderChooserScheduler, \
     PersistentScheduler, makePropertiesScheduler, SpecificNightly, EveryNthScheduler
 from buildbotcustom.l10n import TriggerableL10n
@@ -1009,15 +1010,16 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     # grab the l10n schedulers that nightlies will trigger (if any)
     triggered_nightly_schedulers = []
-    if (config['enable_l10n'] and platform in config['l10n_platforms'] and
-            '%s nightly' % pf['base_name'] in l10nNightlyBuilders):
-        triggered_nightly_schedulers = [
-            l10nNightlyBuilders['%s nightly' % pf['base_name']]['l10n_builder']
-        ]
-    elif is_l10n_with_mh(config, platform):
+    if is_l10n_with_mh(config, platform):
         scheduler_name = mh_l10n_scheduler_name(config, platform)
         triggered_nightly_schedulers.append(scheduler_name)
-
+    elif (config['enable_l10n'] and platform in config['l10n_platforms'] and
+            '%s nightly' % pf['base_name'] in l10nNightlyBuilders):
+        base_name = '%s nightly' % pf['base_name']
+        # see bug 1150015
+        l10n_builder = l10nNightlyBuilders[base_name]['l10n_builder']
+        assert(isinstance(l10n_builder, str))
+        triggered_nightly_schedulers.append(l10n_builder)
     # if we do a generic dep build
     if pf.get('enable_dep', True) or pf.get('enable_periodic', False):
         factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
@@ -2714,27 +2716,47 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                                 extra_args['unittestSuites'] = unittestSuites
                                 extra_args['buildersWithSetsMap'] = builders_with_sets_mapping
                                 extra_args['buildbotBranch'] = branch
+                                branchObjects['schedulers'].append(scheduler_class(
+                                        name=scheduler_name,
+                                        branch=scheduler_branch,
+                                        builderNames=test_builders,
+                                        treeStableTimer=None,
+                                        **extra_args
+                                ))
                             else:
                                 scheduler_class = Scheduler
-                                if test_type == 'debug':
-                                    skipcount = branch_config['platforms'][platform][slave_platform].get('debug_unittest_skipcount')
-                                    skiptimeout = branch_config['platforms'][platform][slave_platform].get('debug_unittest_skiptimeout')
-                                else:
-                                    skipcount = branch_config['platforms'][platform][slave_platform].get('opt_unittest_skipcount')
-                                    skiptimeout = branch_config['platforms'][platform][slave_platform].get('opt_unittest_skiptimeout')
+                                suites_by_skipconfig = collections.defaultdict(list)
+                                skipcount = 0
+                                skiptimeout = 0
+                                for test in test_builders:
+                                    skipcount = 0
+                                    skiptimeout = 0
+                                    if branch_config['platforms'][platform][slave_platform].get('skipconfig'):
+                                        #extract last word in the test string as it should correspond to the name of the test
+                                        test_name = test.split()[-1]
+                                        if (test_type, test_name) in branch_config['platforms'][platform][slave_platform]['skipconfig']:
+                                            skipcount, skiptimeout = branch_config['platforms'][platform][slave_platform]['skipconfig'][test_type, test_name]
+                                    suites_by_skipconfig[skipcount, skiptimeout].append(test)
 
-                                if skipcount:
-                                    scheduler_class = EveryNthScheduler
-                                    extra_args['n'] = skipcount
-                                    extra_args['idleTimeout'] = skiptimeout
+                                # Create a new Scheduler for every skip config
+                                for (skipcount, skiptimeout), test_builders in suites_by_skipconfig.items():
+                                    scheduler_class = Scheduler
+                                    s_name = scheduler_name
+                                    extra_args = {}
 
-                            branchObjects['schedulers'].append(scheduler_class(
-                                name=scheduler_name,
-                                branch=scheduler_branch,
-                                builderNames=test_builders,
-                                treeStableTimer=None,
-                                **extra_args
-                            ))
+                                    if skipcount > 0:
+                                        scheduler_class = EveryNthScheduler
+                                        extra_args['n'] = skipcount
+                                        extra_args['idleTimeout'] = skiptimeout
+                                        s_name = scheduler_name + "-" + str(skipcount) + "-"  + str(skiptimeout)
+
+                                    branchObjects['schedulers'].append(scheduler_class(
+                                        name=s_name,
+                                        branch=scheduler_branch,
+                                        builderNames=test_builders,
+                                        treeStableTimer=None,
+                                        **extra_args
+                                    ))
                         for scheduler_name, test_builders, merge in pgoUnittestBuilders:
                             for test in test_builders:
                                 unittestSuites.append(test.split(' ')[-1])
@@ -3374,13 +3396,12 @@ def mh_l10n_scheduler_name(config, platform):
     pf = config['platforms'][platform]
     return '%s nightly l10n' % (pf['base_name'])
 
-
 def mh_l10n_builder_names(config, platform, branch, is_nightly):
     # let's check if we need to create builders for this config/platform
     names = []
     pf = config['platforms'][platform]
     product_name = pf['product_name']
-    name = '%s %s %s' % (product_name, branch, platform)
+    name = '%s %s %s l10n' % (product_name, branch, platform)
     name = name.capitalize()
     if is_nightly:
         name = '%s nightly' % (name)
@@ -3388,7 +3409,7 @@ def mh_l10n_builder_names(config, platform, branch, is_nightly):
 
     l10n_chunks = repacks['l10n_chunks']
     for chunk in range(1, l10n_chunks + 1):
-        builder_name = "%s l10n %s/%s" % (name, chunk, l10n_chunks)
+        builder_name = "%s-%s" % (name, chunk)
         names.append(builder_name)
     return names
 
@@ -3407,6 +3428,7 @@ def generateReleasePromotionObjects(config, name, secrets):
 
     topLevelBuilders = []
     pf_linux64 = config['platforms']['linux64']
+    pf_macosx64 = config['platforms']['macosx64']
     signing_servers = secrets.get(pf_linux64.get('dep_signing_servers'))
 
     # source builder
@@ -3421,12 +3443,13 @@ def generateReleasePromotionObjects(config, name, secrets):
         'name': source_buildername,
         'factory': source_factory,
         'builddir': source_buildername,
+        'slavebuilddir': normalizeName(source_buildername, config['product_name']),
         'slavenames': pf_linux64['slaves'],
         'category': name,
         'properties': {
             'branch': name,
             'platform': 'source',
-            'product': pf_linux64['stage_product'],
+            'product': config['product_name'],
             'repo_path': config['repo_path'],
             'script_repo_revision': config["mozharness_tag"],
         },
@@ -3434,13 +3457,50 @@ def generateReleasePromotionObjects(config, name, secrets):
     topLevelBuilders.append(source_buildername)
     builders.append(source_builder)
 
-    # To add short-term: partner-repack
-    # Longer-term: l10n repacks, funsize partials, antivirus, checksums etc
+    # partner repacks
+    base_partner_repack_params = dict(
+        hgHost=config['hghost'],
+        repoPath=config['repo_path'],
+        buildToolsRepoPath=config['build_tools_repo_path'],
+        productName=config['product_name'],
+        partnersRepoPath=config['partners_repo_path'],
+        partnersRepoRevision='default',
+        stagingServer=config['stage_server'],
+        stageUsername=config['stage_username'],
+        stageSshKey=config['stage_ssh_key'],
+        signingServers=signing_servers,
+        env=pf_macosx64['env'],
+        nightlyDir=None,
+        releasePromotion=True,
+    )
+    for platform in config['partner_repack_platforms']:
+        partner_repack_params = base_partner_repack_params.copy()
+        partner_repack_params['platformList'] = [platform]
+        partner_repack_factory = PartnerRepackFactory(**partner_repack_params)
+
+        partner_buildername = '%s_%s_partner_repack' % (name, platform)
+        builders.append({
+           'name': partner_buildername,
+           'slavenames': pf_macosx64['slaves'],
+           'category': name,
+           'builddir': partner_buildername,
+           'slavebuilddir': normalizeName(partner_buildername, config['product_name']),
+           'factory': partner_repack_factory,
+           'properties': {
+               'slavebuilddir': normalizeName(partner_buildername, config['product_name']),
+               'branch': name,
+               'platform': platform,
+               'product': config['product_name'],
+            }
+        })
+        topLevelBuilders.append(partner_buildername)
+
+    # To add longer-term: l10n repacks, funsize partials, antivirus, checksums etc
 
     # sendchange listener
     starting_scheduler = Scheduler(
         name='%s_start_promotion' % name,
-        branch='%s-build-promotion' % name,
+        branch='%s-release-promotion' % name,
         treeStableTimer=None,
         builderNames=topLevelBuilders,
     )
