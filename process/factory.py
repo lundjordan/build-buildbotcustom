@@ -626,6 +626,12 @@ class MozillaBuildFactory(RequestSortingBuildFactory, MockMixin):
             packageFilename = '*arm-armv6.apk'
         elif 'android-x86' in self.complete_platform:
             packageFilename = '*android-i386.apk'
+        elif 'android-api-9' in self.complete_platform:
+            # the arm.apk is to avoid unsigned/unaligned apks
+            packageFilename = '*arm-api-9.apk'
+        elif 'android-api-11' in self.complete_platform:
+            # the arm.apk is to avoid unsigned/unaligned apks
+            packageFilename = '*arm-api-11.apk'
         elif 'android' in self.complete_platform:
             # the arm.apk is to avoid unsigned/unaligned apks
             packageFilename = '*arm.apk'
