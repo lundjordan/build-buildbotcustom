@@ -9,9 +9,7 @@ def getSupportedPlatforms():
             'win64', 'android',
             'gb_armv7a_gecko', 'linux32_gecko',
             'macosx64_gecko', 'win32_gecko',
-            'linux64_gecko', 'linux32_gecko_localizer',
-            'macosx64_gecko_localizer', 'win32_gecko_localizer',
-            'linux64_gecko_localizer')
+            'linux64_gecko')
 
 
 def getPlatformFtpDir(platform):
@@ -21,7 +19,7 @@ def getPlatformFtpDir(platform):
         'macosx': 'mac',
         'macosx64': 'mac',
         'win32': 'win32',
-        'win64': 'win64-x86_64',
+        'win64': 'win64',
         'android': 'android-r7',
     }
     return platform_ftp_map.get(platform)
@@ -69,7 +67,7 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'win32': 'w32',
         'win64': 'w64',
         'macosx': 'osx',
-        'macosx64': 'osx64',
+        'macosx64': 'm64',
         'linux64': 'l64',
         'android': 'and',
         'release': 'rel',
@@ -100,20 +98,19 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'armv7a': 'a7',
         'system': 'sys',
         'panda': 'p',
-        'b2g28': 'b28',
         'b2g30': 'b30',
         'b2g32': 'b32',
         'b2g34': 'b34',
-        'v1_3': '13',
+        'b2g37': 'b37',
         'v1_4': '14',
         'v2_0': '20',
         'v2_1': '21',
         'v2_1s': '21s',
+        'v2_2': '22',
         'standalone': 'sa',
         'thunderbird': 'tb',
         'partner': 'pner',
         'checksums': 'sums',
-        'update_verify': 'uv',
         'postrelease': 'pr',
         'spidermonkey': 'sm',
         'warnaserr': 'we',
@@ -123,12 +120,26 @@ def normalizeName(name, product=None, min_=30, max_=30, filler='0'):
         'emulator': 'emu',
         'hamachi': 'ham',
         'wasabi': 'wsb',
-        'tarako': 'tko',
-        'nonunified': 'nu',
         'graphics': 'gfx',
         'flame': 'flm',
+        'dolphin': 'dph',
+        'nexus-5': 'n5',
+        'firefox_tag_source': 'fx_tag_src',
+        'firefox_tag_l10n': 'fx_tag_l10n',
+        'fennec_tag_source': 'm_tag_src',
+        'fennec_tag_l10n': 'm_tag_l10n',
+        'thunderbird_tag_source': 't_tag_src',
+        'thunderbird_tag_l10n': 't_tag_l10n',
+        'start_uptake_monitoring': 'ut',
+        'final': 'fnl',
+        'verification': 'vrfy',
+        'shipping': 'shp',
+        'update': 'u',
+        'verify': 'v',
+        'updates': 'upds',
     }
-    for word, replacement in mappings.iteritems():
+    for word in sorted(mappings):
+        replacement = mappings[word]
         # Regexes are slow, so make sure the word is there at all before
         # trying to do a substitution.
         if word in name:
