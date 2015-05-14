@@ -946,18 +946,24 @@ def generateChunkedUnittestBuilders(total_chunks, *args, **kwargs):
         )
     builders = []
     for i in range(1, total_chunks + 1):
-        kwargs_copy = deepcopy(kwargs)
+        kwargs_copy = kwargs.copy()
         kwargs_copy['suites_name'] = '%s-%d' % (kwargs_copy['suites_name'], i)
         chunk_args = [
             '--total-chunks', str(total_chunks),
             '--this-chunk', str(i)
         ]
         if 'extra_args' in kwargs_copy['mozharness_suite_config']:
-            kwargs_copy['mozharness_suite_config']['extra_args'].extend(chunk_args)
+            # Not used any more
+            assert False
         elif 'extra_args' in kwargs_copy['suites']:
+            kwargs_copy['suites'] = deepcopy(kwargs['suites'])
             kwargs_copy['suites']['extra_args'].extend(chunk_args)
+            # We should have only one set of --this-chunk and --total-chunks here
+            assert kwargs_copy['suites']['extra_args'].count('--this-chunk') == 1
+            assert kwargs_copy['suites']['extra_args'].count('--total-chunks') == 1
         else:
-            kwargs_copy['mozharness_suite_config']['extra_args'] = chunk_args
+            # Not used any more
+            assert False
         builders.extend(generateUnittestBuilders(
             *args, **kwargs_copy
         ))
@@ -1010,16 +1016,18 @@ def generateDesktopMozharnessBuilders(name, platform, config, secrets,
 
     # grab the l10n schedulers that nightlies will trigger (if any)
     triggered_nightly_schedulers = []
-    if is_l10n_with_mh(config, platform):
-        scheduler_name = mh_l10n_scheduler_name(config, platform)
-        triggered_nightly_schedulers.append(scheduler_name)
-    elif (config['enable_l10n'] and platform in config['l10n_platforms'] and
-            '%s nightly' % pf['base_name'] in l10nNightlyBuilders):
-        base_name = '%s nightly' % pf['base_name']
-        # see bug 1150015
-        l10n_builder = l10nNightlyBuilders[base_name]['l10n_builder']
-        assert(isinstance(l10n_builder, str))
-        triggered_nightly_schedulers.append(l10n_builder)
+    if config.get("enable_triggered_nightly_scheduler", True):
+        if is_l10n_with_mh(config, platform):
+            scheduler_name = mh_l10n_scheduler_name(config, platform)
+            triggered_nightly_schedulers.append(scheduler_name)
+        elif (config['enable_l10n'] and platform in config['l10n_platforms'] and
+                '%s nightly' % pf['base_name'] in l10nNightlyBuilders):
+            base_name = '%s nightly' % pf['base_name']
+            # see bug 1150015
+            l10n_builder = l10nNightlyBuilders[base_name]['l10n_builder']
+            assert(isinstance(l10n_builder, str))
+            triggered_nightly_schedulers.append(l10n_builder)
+
     # if we do a generic dep build
     if pf.get('enable_dep', True) or pf.get('enable_periodic', False):
         factory = makeMHFactory(config, pf, mh_cfg=mh_cfg,
@@ -1235,9 +1243,6 @@ def generateBranchObjects(config, name, secrets=None):
             buildersByProduct.setdefault(pf['stage_product'], []).append(
                 '%s pgo-build' % pf['base_name'])
 
-        if pf.get('enable_noprofiling_build'):
-            nightlyBuilders.append('%s no-profiling' % pf['base_name'])
-
         if do_nightly:
             builder = '%s nightly' % base_name
             nightlyBuilders.append(builder)
@@ -1355,26 +1360,27 @@ def generateBranchObjects(config, name, secrets=None):
     else:
         scheduler_name_prefix = name
 
-    for product, product_builders in buildersByProduct.items():
-        if config.get('enable_try'):
-            fileIsImportant = lambda c: isHgPollerTriggered(c, config['hgurl'])
-        else:
-            # The per-product build behaviour is tweakable per branch, and
-            # by default is opt-out. (Bug 1056792).
-            if not config.get('enable_perproduct_builds', True):
-                fileIsImportant = makeImportantFunc(config['hgurl'], None)
+    if config.get("enable_onchange_scheduler", True):
+        for product, product_builders in buildersByProduct.items():
+            if config.get('enable_try'):
+                fileIsImportant = lambda c: isHgPollerTriggered(c, config['hgurl'])
             else:
-                fileIsImportant = makeImportantFunc(config['hgurl'], product)
+                # The per-product build behaviour is tweakable per branch, and
+                # by default is opt-out. (Bug 1056792).
+                if not config.get('enable_perproduct_builds', True):
+                    fileIsImportant = makeImportantFunc(config['hgurl'], None)
+                else:
+                    fileIsImportant = makeImportantFunc(config['hgurl'], product)
 
-        branchObjects['schedulers'].append(scheduler_class(
-            name=scheduler_name_prefix + "-" + product,
-            branch=config.get("poll_repo", config['repo_path']),
-            builderNames=product_builders,
-            fileIsImportant=fileIsImportant,
-            **extra_args
-        ))
+            branchObjects['schedulers'].append(scheduler_class(
+                name=scheduler_name_prefix + "-" + product,
+                branch=config.get("poll_repo", config['repo_path']),
+                builderNames=product_builders,
+                fileIsImportant=fileIsImportant,
+                **extra_args
+            ))
 
-    if config['enable_l10n']:
+    if config['enable_l10n'] and config.get("enable_l10n_dep_scheduler", True):
         l10n_builders = []
         for b in l10nBuilders:
             l10n_builders.append(l10nBuilders[b]['l10n_builder'])
@@ -1395,7 +1401,7 @@ def generateBranchObjects(config, name, secrets=None):
 
     # Now, setup the nightly en-US schedulers and maybe,
     # their downstream l10n ones
-    if nightlyBuilders or xulrunnerNightlyBuilders:
+    if (nightlyBuilders or xulrunnerNightlyBuilders) and config.get("enable_nightly_scheduler", True):
         if config.get('enable_nightly_lastgood', False):
             goodFunc = lastGoodFunc(
                 branch=config['repo_path'],
@@ -1423,7 +1429,7 @@ def generateBranchObjects(config, name, secrets=None):
             )
         branchObjects['schedulers'].append(nightly_scheduler)
 
-    if len(periodicBuilders) > 0:
+    if len(periodicBuilders) > 0 and config.get("enable_periodic_scheduler", True):
         hour = config['periodic_start_hours']
         minute = config.get('periodic_start_minute', 0)
 
@@ -1448,28 +1454,30 @@ def generateBranchObjects(config, name, secrets=None):
             # it's a repacks with mozharness
             l10n_builders = l10nNightlyBuilders[builder]['l10n_builder']
             nomergeBuilders.update(l10n_builders)
-            triggerable_name = l10nNightlyBuilders[builder]['scheduler_name']
-            triggerable = Triggerable(name=triggerable_name,
-                                      builderNames=l10n_builders)
-            branchObjects['schedulers'].append(triggerable)
+            if config.get("enable_triggered_nightly_scheduler", True):
+                triggerable_name = l10nNightlyBuilders[builder]['scheduler_name']
+                triggerable = Triggerable(name=triggerable_name,
+                                        builderNames=l10n_builders)
+                branchObjects['schedulers'].append(triggerable)
 
         elif config['enable_l10n'] and \
                 config['enable_nightly'] and builder in l10nNightlyBuilders:
             # classic repacks
             l10n_builder = l10nNightlyBuilders[builder]['l10n_builder']
             nomergeBuilders.add(l10n_builder)
-            platform = l10nNightlyBuilders[builder]['platform']
-            branchObjects['schedulers'].append(TriggerableL10n(
-                                               name=l10n_builder,
-                                               platform=platform,
-                                               builderNames=[l10n_builder],
-                                               branch=config['repo_path'],
-                                               baseTag='default',
-                                               localesURL=config.get(
-                                                   'localesURL', None)
-                                               ))
+            if config.get("enable_triggered_nightly_scheduler", True):
+                platform = l10nNightlyBuilders[builder]['platform']
+                branchObjects['schedulers'].append(TriggerableL10n(
+                                                name=l10n_builder,
+                                                platform=platform,
+                                                builderNames=[l10n_builder],
+                                                branch=config['repo_path'],
+                                                baseTag='default',
+                                                localesURL=config.get(
+                                                    'localesURL', None)
+                                                ))
 
-    if weeklyBuilders:
+    if weeklyBuilders and config.get("enable_weekly_scheduler", True):
         weekly_scheduler = Nightly(
             name='weekly-%s' % scheduler_name_prefix,
             branch=config['repo_path'],
@@ -1802,7 +1810,6 @@ def generateBranchObjects(config, name, secrets=None):
                     platform in config['pgo_platforms'] and not
                     builder_tracker['done_pgo_build']):
                 pgo_kwargs = factory_kwargs.copy()
-                pgo_kwargs["doPostLinkerSize"] = pf.get('enable_post_linker_size', False)
                 pgo_kwargs['profiledBuild'] = True
                 pgo_kwargs['stagePlatform'] += '-pgo'
                 pgo_kwargs['unittestBranch'] = pgoUnittestBranch
@@ -1822,34 +1829,6 @@ def generateBranchObjects(config, name, secrets=None):
                                    'slavebuilddir': normalizeName('%s-%s-pgo' % (name, platform), pf['stage_product'])},
                 }
                 branchObjects['builders'].append(pgo_builder)
-
-            if pf.get('enable_noprofiling_build'):
-                kwargs = factory_kwargs.copy()
-                kwargs['stagePlatform'] += '-noprofiling'
-                kwargs['srcMozconfig'] = kwargs['srcMozconfig'] + '-noprofiling'
-                # We do need to upload these packages
-                kwargs['uploadPackages'] = True
-                # Disable sendchanges
-                kwargs['talosMasters'] = None
-                kwargs['unittestMasters'] = None
-                # Enable nightly stuff, e.g. upload location
-                kwargs['nightly'] = True
-                factory = factory_class(**kwargs)
-                builder = {
-                    'name': '%s no-profiling' % pf['base_name'],
-                    'slavenames': pf['slaves'],
-                    'builddir': '%s-%s-noprofiling' % (name, platform),
-                    'slavebuilddir': normalizeName('%s-%s-noprofiling' % (name, platform), pf['stage_product']),
-                    'factory': factory,
-                    'category': name,
-                    'nextSlave': _nextAWSSlave_sort,
-                    'properties': {'branch': name,
-                                   'platform': platform,
-                                   'stage_platform': stage_platform + '-noprofiling',
-                                   'product': pf['stage_product'],
-                                   'slavebuilddir': normalizeName('%s-%s-noprofiling' % (name, platform), pf['stage_product'])},
-                }
-                branchObjects['builders'].append(builder)
 
         # skip nightlies for debug builds unless requested at platform level
         if platform.endswith("-debug") and not pf.get('enable_nightly'):
@@ -1916,17 +1895,19 @@ def generateBranchObjects(config, name, secrets=None):
                         'env': builder_env
                     })
 
-                branchObjects["schedulers"].append(Triggerable(
-                    name=mobile_l10n_scheduler_name,
-                    builderNames=mobile_l10n_builders
-                ))
-                triggeredSchedulers = [mobile_l10n_scheduler_name]
+                if config.get("enable_triggered_nightly_scheduler", True):
+                    branchObjects["schedulers"].append(Triggerable(
+                        name=mobile_l10n_scheduler_name,
+                        builderNames=mobile_l10n_builders
+                    ))
+                    triggeredSchedulers = [mobile_l10n_scheduler_name]
 
             else:  # Non-mobile l10n is done differently at this time
-                if config['enable_l10n'] and platform in config['l10n_platforms'] and \
-                        nightly_builder in l10nNightlyBuilders:
-                    triggeredSchedulers = [
-                        l10nNightlyBuilders[nightly_builder]['l10n_builder']]
+                if config.get("enable_triggered_nightly_scheduler", True):
+                    if config['enable_l10n'] and platform in config['l10n_platforms'] and \
+                            nightly_builder in l10nNightlyBuilders:
+                        triggeredSchedulers = [
+                            l10nNightlyBuilders[nightly_builder]['l10n_builder']]
 
             nightly_kwargs = {}
             nightly_kwargs.update(multiargs)
@@ -2827,39 +2808,7 @@ def generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
                 )
                 branchObjects['schedulers'].append(s)
 
-    if branch_config.get('release_tests'):
-        releaseObjects = generateTalosReleaseBranchObjects(branch,
-                                                           branch_config, PLATFORMS, SUITES, ACTIVE_UNITTEST_PLATFORMS)
-        for k, v in releaseObjects.items():
-            branchObjects[k].extend(v)
     return branchObjects
-
-
-def generateTalosReleaseBranchObjects(branch, branch_config, PLATFORMS, SUITES,
-                                      ACTIVE_UNITTEST_PLATFORMS):
-    branch_config = branch_config.copy()
-    release_tests = branch_config['release_tests']
-
-    # Update the # of tests to run with our release_tests number
-    # Force no merging
-    for suite, talosConfig in SUITES.items():
-        tests, merge, extra, platforms = branch_config['%s_tests' % suite]
-        if tests > 0:
-            branch_config['%s_tests' % suite] = (release_tests,
-                                                 False, extra, platforms)
-
-    # Update the TinderboxTree and the branch_name
-    branch_config['tinderbox_tree'] += '-Release'
-    branch_config['branch_name'] += '-Release'
-    branch = "release-" + branch
-
-    # Remove the release_tests key so we don't call ourselves again
-    del branch_config['release_tests']
-
-    # Don't fetch symbols
-    branch_config['fetch_symbols'] = branch_config['fetch_release_symbols']
-    return generateTalosBranchObjects(branch, branch_config, PLATFORMS, SUITES,
-                                      ACTIVE_UNITTEST_PLATFORMS)
 
 
 def mirrorAndBundleArgs(config):
@@ -3077,27 +3026,28 @@ def generateSpiderMonkeyObjects(project, config, SLAVES):
 
     # Set up schedulers
     extra_args = {}
-    scheduler_class = None
-    if config.get('enable_try'):
-        scheduler_class = makePropertiesScheduler(
-            BuilderChooserScheduler, [buildUIDSchedFunc])
-        extra_args['chooserFunc'] = tryChooser
-        extra_args['buildbotBranch'] = branch
-    else:
-        scheduler_class = Scheduler
-
     schedulers = []
-    for variant in prettyNames:
+    if config.get("enable_schedulers", True):
+        scheduler_class = None
         if config.get('enable_try'):
-            extra_args['prettyNames'] = prettyNames[variant]
-        schedulers.append(scheduler_class(
-            name=project + "-" + variant,
-            treeStableTimer=None,
-            builderNames=builderNames[variant],
-            fileIsImportant=isImportant,
-            change_filter=ChangeFilter(branch=bconfig['repo_path'], filter_fn=isImportant),
-            **extra_args
-        ))
+            scheduler_class = makePropertiesScheduler(
+                BuilderChooserScheduler, [buildUIDSchedFunc])
+            extra_args['chooserFunc'] = tryChooser
+            extra_args['buildbotBranch'] = branch
+        else:
+            scheduler_class = Scheduler
+
+        for variant in prettyNames:
+            if config.get('enable_try'):
+                extra_args['prettyNames'] = prettyNames[variant]
+            schedulers.append(scheduler_class(
+                name=project + "-" + variant,
+                treeStableTimer=None,
+                builderNames=builderNames[variant],
+                fileIsImportant=isImportant,
+                change_filter=ChangeFilter(branch=bconfig['repo_path'], filter_fn=isImportant),
+                **extra_args
+            ))
 
     return {
         'builders': builders,
@@ -3173,28 +3123,6 @@ def generateJetpackObjects(config, SLAVES):
     }
 
 
-def generateGaiaTryObjects(config, all_builders):
-    # Set up polling
-    assert all_builders
-    builder_names = [x['name'] for x in all_builders if 'gaia-try' in x['name']]
-    poller = HgPoller(
-        hgURL=config['hgurl'],
-        branch=config['repo_path'],
-        pollInterval=5 * 60,
-    )
-    # Set up scheduler
-    scheduler = Scheduler(
-        name="gaia-try",
-        branch=config['repo_path'],
-        treeStableTimer=None,
-        builderNames=builder_names,
-    )
-    return {
-        'change_source': [poller],
-        'schedulers': [scheduler],
-    }
-
-
 def generateProjectObjects(project, config, SLAVES, all_builders=None):
     builders = []
     schedulers = []
@@ -3222,11 +3150,6 @@ def generateProjectObjects(project, config, SLAVES, all_builders=None):
         spiderMonkeyObjects = generateSpiderMonkeyObjects(
             project, config, SLAVES)
         buildObjects = mergeBuildObjects(buildObjects, spiderMonkeyObjects)
-
-    # Gaia-Try
-    elif project == "gaia-try":
-        gaiaTryObjects = generateGaiaTryObjects(config, all_builders)
-        buildObjects = mergeBuildObjects(buildObjects, gaiaTryObjects)
 
     return buildObjects
 
@@ -3327,6 +3250,8 @@ def mh_l10n_builders(config, platform, branch, secrets, is_nightly):
     product_name = pf['product_name'].capitalize()
     scriptName = repacks['scriptName']
     l10n_chunks = repacks['l10n_chunks']
+    script_timeout = repacks['script_timeout']
+    script_maxtime = repacks['script_maxtime']
     use_credentials_file = repacks['use_credentials_file']
     config_dir = 'single_locale'
     branch_config = os.path.join(config_dir, '%s.py' % branch)
@@ -3354,13 +3279,14 @@ def mh_l10n_builders(config, platform, branch, secrets, is_nightly):
             signingServers=signing_servers,
             scriptRepo=scriptRepo,
             scriptName=scriptName,
+            script_timeout=script_timeout,
+            script_maxtime=script_maxtime,
             use_credentials_file=use_credentials_file,
             interpreter=mozharness_python,
             extra_args=extra_args,
             reboot_command=reboot_command,
         )
         slavebuilddir = normalizeName(builddir)
-        # was: slavebuilddir = normalizeName(builddir, pf['stage_product'])
         builders.append({
             'name': builderName,
             'slavenames': pf.get('slaves'),
@@ -3378,6 +3304,7 @@ def mh_l10n_builders(config, platform, branch, secrets, is_nightly):
                            'script_repo_revision': config['mozharness_tag'], },
             'env': builder_env
         })
+
     return builders
 
 
