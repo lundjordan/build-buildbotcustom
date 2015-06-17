@@ -4727,7 +4727,7 @@ class PartnerRepackFactory(ReleaseFactory):
                      '%(toolsdir)s/release/common/unpack-diskimage.sh'),
                  '--upload-user', self.stageUsername,
                  '--upload-host', self.stagingServer,
-                 '--upload-ssh-key', '~/.ssh/{}'.format(self.stageSshKey),
+                 '--upload-ssh-key', '~/.ssh/%s' % self.stageSshKey,
                 ]
         if self.releasePromotion:
             command.extend(['--use-tinderbox-builds',
