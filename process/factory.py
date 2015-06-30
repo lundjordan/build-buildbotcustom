@@ -4903,8 +4903,8 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                          WithProperties(
                              'python %s ' % archiver_client_path +
                              '%s ' % relengapi_archiver +
-                             '--repo %(repo_path) ' +
-                             '--rev %(revision) ' +
+                             '--repo %(repo_path)s ' +
+                             '--rev %(revision)s ' +
                              '--destination %(basedir)s/scripts ' +
                              '--debug')],
                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
