@@ -4883,7 +4883,7 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
             else:
                 self.addStep(ShellCommand(
                     command=['bash', '-c',
-                             WithProperties('wget -Orepository_manifest.py ' + \
+                             WithProperties('wget -Oarchiver_client.py ' + \
                                             '--no-check-certificate --tries=10 --waitretry=3 ' + \
                                             'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py')],
                     haltOnFailure=True,
@@ -4903,9 +4903,9 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                          WithProperties(
                              'python %s ' % archiver_client_path +
                              '%s ' % relengapi_archiver +
-                             '--repo %s ' % WithProperties('%(repo_path)') +
-                             '--rev %s' % WithProperties('%(revision)') +
-                             '--destination %s' % WithProperties('%(basedir)s/scripts') +
+                             '--repo %(repo_path) ' +
+                             '--rev %(revision) ' +
+                             '--destination %(basedir)s/scripts ' +
                              '--debug')],
                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
                 haltOnFailure=True,
