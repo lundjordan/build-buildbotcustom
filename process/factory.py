@@ -4883,9 +4883,9 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
             else:
                 self.addStep(ShellCommand(
                     command=['bash', '-c',
-                             WithProperties('wget -Oarchiver_client.py ' + \
-                                            '--no-check-certificate --tries=10 --waitretry=3 ' + \
-                                            'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py')],
+                             'wget -Oarchiver_client.py ' +
+                             '--no-check-certificate --tries=10 --waitretry=3 ' +
+                             'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
                     haltOnFailure=True,
                 ))
                 archiver_client_path = 'archiver_client.py'
@@ -4910,7 +4910,7 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
                 haltOnFailure=True,
             ))
-            if scriptName[0] == '/':
+            if scriptName.startswith('/'):
                 script_path = scriptName
             else:
                 script_path = 'scripts/%s' % scriptName
