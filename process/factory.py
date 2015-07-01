@@ -4906,7 +4906,7 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                              '--repo %(repo_path)s ' +
                              '--rev %(revision)s ' +
                              '--destination %(basedir)s/scripts ' +
-                             '--debug')],
+                             '--staging ' + '--debug')],
                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
                 haltOnFailure=True,
             ))
