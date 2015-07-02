@@ -4885,7 +4885,8 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                     command=['bash', '-c',
                              'wget -Oarchiver_client.py ' +
                              '--no-check-certificate --tries=10 --waitretry=3 ' +
-                             'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
+                             'http://hg.mozilla.org/users/jlund_mozilla.com/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
+                             # 'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
                     haltOnFailure=True,
                 ))
                 archiver_client_path = 'archiver_client.py'
