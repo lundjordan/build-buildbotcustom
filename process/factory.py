@@ -4906,7 +4906,6 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                 script_path = scriptName
             else:
                 script_path = 'scripts/%s' % scriptName
-
         elif self.script_repo_cache:
             # all slaves bar win tests have a copy of hgtool on their path.
             # However, let's use runner's checkout version like we do for
