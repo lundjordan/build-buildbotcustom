@@ -4863,23 +4863,23 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
         script_repo_url = WithProperties('%(script_repo_url)s')
 
         if relengapi_archiver:
-            if self.script_repo_cache:
-                assert self.tools_repo_cache
-                archiver_client_path = \
-                    os.path.join(self.tools_repo_cache,
-                                 'buildfarm',
-                                 'utils',
-                                 'archiver_client.py')
-            else:
-                self.addStep(ShellCommand(
-                    command=['bash', '-c',
-                             'wget -Oarchiver_client.py ' +
-                             '--no-check-certificate --tries=10 --waitretry=3 ' +
-                             'https://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
-                    haltOnFailure=True,
-                    workdir=".",
-                ))
-                archiver_client_path = 'archiver_client.py'
+            # if self.script_repo_cache:
+            #     assert self.tools_repo_cache
+            #     archiver_client_path = \
+            #         os.path.join(self.tools_repo_cache,
+            #                      'buildfarm',
+            #                      'utils',
+            #                      'archiver_client.py')
+            # else:
+            self.addStep(ShellCommand(
+                command=['bash', '-c',
+                         'wget -Oarchiver_client.py ' +
+                         '--no-check-certificate --tries=10 --waitretry=3 ' +
+                         'https://raw.githubusercontent.com/lundjordan/build-tools/archiver/buildfarm/utils/archiver_client.py'],
+                haltOnFailure=True,
+                workdir=".",
+            ))
+            archiver_client_path = 'archiver_client.py'
 
             self.addStep(ShellCommand(
                 name="clobber_scripts",
@@ -4902,280 +4902,280 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                 haltOnFailure=True,
                 workdir=".",
             ))
-            if scriptName.startswith('/'):
-                script_path = scriptName
-            else:
-                script_path = 'scripts/%s' % scriptName
-        elif self.script_repo_cache:
-            # all slaves bar win tests have a copy of hgtool on their path.
-            # However, let's use runner's checkout version like we do for
-            # script repo
-            assert self.tools_repo_cache
-            # ScriptFactory adds the props file into its env but we don't
-            # want to pass that to the hgtool call because hgtool will assume
-            # things like ['sourcestamp']['branch'] should be our branch
-            # that script_repo pulls from
-            hgtool_path = \
-                    os.path.join(self.tools_repo_cache,
-                                 'buildfarm',
-                                 'utils',
-                                 'hgtool.py')
-            repository_manifest_path = \
-                    os.path.join(self.tools_repo_cache,
-                                'buildfarm',
-                                'utils',
-                                'repository_manifest.py')
-
-            if script_repo_manifest:
-                self.addStep(SetProperty(
-                    name="set_script_repo_url_and_script_repo_revision",
-                    extract_fn=extractProperties,
-                    command=['bash', '-c',
-                        WithProperties(
-                        'python %s ' % repository_manifest_path +
-                        '--default-repo %s ' % scriptRepo +
-                        '--default-revision %(script_repo_revision:-default)s ' +
-                        '--default-checkout %s ' % self.script_repo_cache +
-                        '--checkout %(basedir)s/scripts ' +
-                        '--manifest-url %s' % script_repo_manifest)],
-                    log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
-                    haltOnFailure=True,
-                ))
-            else:
-                self.addStep(SetBuildProperty(
-                    property_name='script_repo_checkout',
-                    value=self.script_repo_cache,
-                ))
-
-            hg_script_repo_env = self.env.copy()
-            hg_script_repo_env.pop('PROPERTIES_FILE', None)
-
-            hgtool_cmd = [
-                'python', hgtool_path, '--purge',
-                '-r', WithProperties('%(script_repo_revision:-default)s'),
-                WithProperties('%(script_repo_url)s'),
-                WithProperties('%(script_repo_checkout)s'),
-            ]
-
-            self.addStep(ShellCommand(
-                name='update_script_repo_cache',
-                command=hgtool_cmd,
-                env=hg_script_repo_env,
-                haltOnFailure=True,
-                flunkOnFailure=True,
-            ))
-            self.addStep(SetProperty(
-                name='get_script_repo_revision',
-                property='script_repo_revision',
-                command=[hg_bin, 'id', '-i'],
-                workdir=WithProperties('%(script_repo_checkout)s'),
-                haltOnFailure=False,
-            ))
-            script_path = WithProperties('%(script_repo_checkout)s/' + scriptName)
-        else:
-            # fall back to legacy clobbering + cloning script repo
-            if script_repo_manifest:
-                # By setting scriptRepoManifest we indicate that we don't
-                # want to use scriptRepo but we want to let the manifest associated
-                # to set the repo to checkout and which revision/branch to update to
-                # If the repo specified in the manifest matches scriptRepo we will
-                # use the cached version if available (i.e. script_repo_cache has
-                # been set)
-                self.addStep(ShellCommand(
-                    command=['bash', '-c',
-                             WithProperties('wget -Orepository_manifest.py ' + \
-                             '--no-check-certificate --tries=10 --waitretry=3 ' + \
-                             'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/repository_manifest.py')],
-                    haltOnFailure=True,
-                ))
-                self.addStep(SetProperty(
-                    name="set_script_repo_url_and_script_repo_revision",
-                    extract_fn=extractProperties,
-                    command=['bash', '-c',
-                        WithProperties(
-                        'python repository_manifest.py ' +
-                        '--default-repo %s ' % scriptRepo +
-                        '--default-revision %(script_repo_revision)s ' +
-                        '--manifest-url %s' % script_repo_manifest)],
-                    log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
-                    haltOnFailure=True,
-                ))
-
-            self.addStep(ShellCommand(
-                name="clobber_scripts",
-                command=['rm', '-rf', 'scripts'],
-                workdir=".",
-                haltOnFailure=True,
-                log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-            ))
-            self.addStep(MercurialCloneCommand(
-                name="clone_scripts",
-                command=[hg_bin, 'clone', script_repo_url, 'scripts'],
-                workdir=".",
-                haltOnFailure=True,
-                retry=False,
-                log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
-            ))
-            self.addStep(ShellCommand(
-                name="update_scripts",
-                command=[hg_bin, 'update', '-C', '-r',
-                         WithProperties('%(script_repo_revision:-default)s')],
-                haltOnFailure=True,
-                workdir='scripts'
-            ))
-            self.addStep(SetProperty(
-                name='get_script_repo_revision',
-                property='script_repo_revision',
-                command=[hg_bin, 'id', '-i'],
-                workdir='scripts',
-                haltOnFailure=False,
-            ))
-            if scriptName[0] == '/':
-                script_path = scriptName
-            else:
-                script_path = 'scripts/%s' % scriptName
-
-
-        if interpreter:
-            if isinstance(interpreter, (tuple, list)):
-                self.cmd = list(interpreter) + [script_path]
-            else:
-                self.cmd = [interpreter, script_path]
-        else:
-            self.cmd = [script_path]
-
-        if extra_args:
-            self.cmd.extend(extra_args)
-
-
-        if use_credentials_file:
-            self.addStep(FileDownload(
-                mastersrc=os.path.join(os.getcwd(), 'BuildSlaves.py'),
-                slavedest='oauth.txt',
-                workdir='.',
-                flunkOnFailure=False,
-            ))
-        self.addStep(OutputStep(
-            name='tinderboxprint_script_revlink',
-            data=WithProperties(
-                'TinderboxPrint: script_revlink: %(script_repo_url)s/rev/%(script_repo_revision)s'
-        )))
-        if self.tooltool_manifest_src:
-            self.addStep(SetProperty(
-                name='set_toolsdir',
-                command=['bash', '-c', 'pwd'],
-                property='toolsdir',
-                workdir='scripts',
-            ))
-            self.addTooltoolStep()
-        self.runScript()
-        self.addCleanupSteps()
-        self.reboot()
-
-    def addCleanupSteps(self):
-        # remove oauth.txt file, we don't wanna to leave keys lying around
-        if self.use_credentials_file:
-            self.addStep(ShellCommand(
-                name='rm_oauth_txt',
-                command=['rm', '-f', 'oauth.txt'],
-                workdir='.',
-                alwaysRun=True
-            ))
-
-    def preRunScript(self):
-        if self.use_mock:
-            self.addStep(MockReset(
-                target=self.mock_target,
-            ))
-            self.addStep(MockInit(
-                target=self.mock_target,
-            ))
-            if self.mock_copyin_files:
-                for source, target in self.mock_copyin_files:
-                    self.addStep(ShellCommand(
-                        name='mock_copyin_%s' % source.replace('/', '_'),
-                        command=['mock_mozilla', '-r', self.mock_target,
-                                 '--copyin', source, target],
-                        haltOnFailure=True,
-                    ))
-                    self.addStep(MockCommand(
-                        name='mock_chown_%s' % target.replace('/', '_'),
-                        command='chown -R mock_mozilla %s' % target,
-                        target=self.mock_target,
-                        mock=True,
-                        workdir='/',
-                        mock_args=[],
-                        mock_workdir_prefix=None,
-                    ))
-
-            self.addStep(MockInstall(
-                target=self.mock_target,
-                packages=self.mock_packages,
-                timeout=2700,
-            ))
-
-    def runScript(self, env=None):
-        if not env:
-            env = self.env
-        self.preRunScript()
-        self.addStep(MockCommand(
-            name="run_script",
-            command=self.cmd,
-            env=env,
-            timeout=self.script_timeout,
-            maxTime=self.script_maxtime,
-            log_eval_func=self.log_eval_func,
-            workdir=".",
-            haltOnFailure=True,
-            warnOnWarnings=True,
-            mock=self.use_mock,
-            target=self.mock_target,
-        ))
-
-        cmd = ['bash', '-c', 'for file in `ls -1`; do cat $file; done']
-        if self.platform and 'win' in self.platform:
-            # note: prefixing 'type' command with '@' to suppress extraneous
-            # output
-            cmd = ['cmd', '/C', 'for', '%f', 'in', '(*)', 'do', '@type', '%f']
-
-        self.addStep(SetProperty(
-            name='set_script_properties',
-            command=cmd,
-            workdir='properties',
-            extract_fn=extractProperties,
-            alwaysRun=True,
-            warnOnFailure=False,
-            flunkOnFailure=False,
-        ))
-
-        if self.triggered_schedulers:
-            for triggered_scheduler in self.triggered_schedulers:
-                self.addStep(Trigger(
-                    schedulerNames=[triggered_scheduler],
-                    copy_properties=self.copy_properties,
-                    waitForFinish=False)
-                )
-
-    def reboot(self):
-        def do_disconnect(cmd):
-            try:
-                if 'SCHEDULED REBOOT' in cmd.logs['stdio'].getText():
-                    return True
-            except:
-                pass
-            return False
-        if self.reboot_command:
-            self.addStep(DisconnectStep(
-                name='reboot',
-                flunkOnFailure=False,
-                warnOnFailure=False,
-                alwaysRun=True,
-                workdir='.',
-                description="reboot",
-                command=self.reboot_command,
-                force_disconnect=do_disconnect,
-                env=self.env,
-            ))
+    #         if scriptName.startswith('/'):
+    #             script_path = scriptName
+    #         else:
+    #             script_path = 'scripts/%s' % scriptName
+    #     elif self.script_repo_cache:
+    #         # all slaves bar win tests have a copy of hgtool on their path.
+    #         # However, let's use runner's checkout version like we do for
+    #         # script repo
+    #         assert self.tools_repo_cache
+    #         # ScriptFactory adds the props file into its env but we don't
+    #         # want to pass that to the hgtool call because hgtool will assume
+    #         # things like ['sourcestamp']['branch'] should be our branch
+    #         # that script_repo pulls from
+    #         hgtool_path = \
+    #                 os.path.join(self.tools_repo_cache,
+    #                              'buildfarm',
+    #                              'utils',
+    #                              'hgtool.py')
+    #         repository_manifest_path = \
+    #                 os.path.join(self.tools_repo_cache,
+    #                             'buildfarm',
+    #                             'utils',
+    #                             'repository_manifest.py')
+    #
+    #         if script_repo_manifest:
+    #             self.addStep(SetProperty(
+    #                 name="set_script_repo_url_and_script_repo_revision",
+    #                 extract_fn=extractProperties,
+    #                 command=['bash', '-c',
+    #                     WithProperties(
+    #                     'python %s ' % repository_manifest_path +
+    #                     '--default-repo %s ' % scriptRepo +
+    #                     '--default-revision %(script_repo_revision:-default)s ' +
+    #                     '--default-checkout %s ' % self.script_repo_cache +
+    #                     '--checkout %(basedir)s/scripts ' +
+    #                     '--manifest-url %s' % script_repo_manifest)],
+    #                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
+    #                 haltOnFailure=True,
+    #             ))
+    #         else:
+    #             self.addStep(SetBuildProperty(
+    #                 property_name='script_repo_checkout',
+    #                 value=self.script_repo_cache,
+    #             ))
+    #
+    #         hg_script_repo_env = self.env.copy()
+    #         hg_script_repo_env.pop('PROPERTIES_FILE', None)
+    #
+    #         hgtool_cmd = [
+    #             'python', hgtool_path, '--purge',
+    #             '-r', WithProperties('%(script_repo_revision:-default)s'),
+    #             WithProperties('%(script_repo_url)s'),
+    #             WithProperties('%(script_repo_checkout)s'),
+    #         ]
+    #
+    #         self.addStep(ShellCommand(
+    #             name='update_script_repo_cache',
+    #             command=hgtool_cmd,
+    #             env=hg_script_repo_env,
+    #             haltOnFailure=True,
+    #             flunkOnFailure=True,
+    #         ))
+    #         self.addStep(SetProperty(
+    #             name='get_script_repo_revision',
+    #             property='script_repo_revision',
+    #             command=[hg_bin, 'id', '-i'],
+    #             workdir=WithProperties('%(script_repo_checkout)s'),
+    #             haltOnFailure=False,
+    #         ))
+    #         script_path = WithProperties('%(script_repo_checkout)s/' + scriptName)
+    #     else:
+    #         # fall back to legacy clobbering + cloning script repo
+    #         if script_repo_manifest:
+    #             # By setting scriptRepoManifest we indicate that we don't
+    #             # want to use scriptRepo but we want to let the manifest associated
+    #             # to set the repo to checkout and which revision/branch to update to
+    #             # If the repo specified in the manifest matches scriptRepo we will
+    #             # use the cached version if available (i.e. script_repo_cache has
+    #             # been set)
+    #             self.addStep(ShellCommand(
+    #                 command=['bash', '-c',
+    #                          WithProperties('wget -Orepository_manifest.py ' + \
+    #                          '--no-check-certificate --tries=10 --waitretry=3 ' + \
+    #                          'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/repository_manifest.py')],
+    #                 haltOnFailure=True,
+    #             ))
+    #             self.addStep(SetProperty(
+    #                 name="set_script_repo_url_and_script_repo_revision",
+    #                 extract_fn=extractProperties,
+    #                 command=['bash', '-c',
+    #                     WithProperties(
+    #                     'python repository_manifest.py ' +
+    #                     '--default-repo %s ' % scriptRepo +
+    #                     '--default-revision %(script_repo_revision)s ' +
+    #                     '--manifest-url %s' % script_repo_manifest)],
+    #                 log_eval_func=rc_eval_func({0: SUCCESS, None: EXCEPTION}),
+    #                 haltOnFailure=True,
+    #             ))
+    #
+    #         self.addStep(ShellCommand(
+    #             name="clobber_scripts",
+    #             command=['rm', '-rf', 'scripts'],
+    #             workdir=".",
+    #             haltOnFailure=True,
+    #             log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
+    #         ))
+    #         self.addStep(MercurialCloneCommand(
+    #             name="clone_scripts",
+    #             command=[hg_bin, 'clone', script_repo_url, 'scripts'],
+    #             workdir=".",
+    #             haltOnFailure=True,
+    #             retry=False,
+    #             log_eval_func=rc_eval_func({0: SUCCESS, None: RETRY}),
+    #         ))
+    #         self.addStep(ShellCommand(
+    #             name="update_scripts",
+    #             command=[hg_bin, 'update', '-C', '-r',
+    #                      WithProperties('%(script_repo_revision:-default)s')],
+    #             haltOnFailure=True,
+    #             workdir='scripts'
+    #         ))
+    #         self.addStep(SetProperty(
+    #             name='get_script_repo_revision',
+    #             property='script_repo_revision',
+    #             command=[hg_bin, 'id', '-i'],
+    #             workdir='scripts',
+    #             haltOnFailure=False,
+    #         ))
+    #         if scriptName[0] == '/':
+    #             script_path = scriptName
+    #         else:
+    #             script_path = 'scripts/%s' % scriptName
+    #
+    #
+    #     if interpreter:
+    #         if isinstance(interpreter, (tuple, list)):
+    #             self.cmd = list(interpreter) + [script_path]
+    #         else:
+    #             self.cmd = [interpreter, script_path]
+    #     else:
+    #         self.cmd = [script_path]
+    #
+    #     if extra_args:
+    #         self.cmd.extend(extra_args)
+    #
+    #
+    #     if use_credentials_file:
+    #         self.addStep(FileDownload(
+    #             mastersrc=os.path.join(os.getcwd(), 'BuildSlaves.py'),
+    #             slavedest='oauth.txt',
+    #             workdir='.',
+    #             flunkOnFailure=False,
+    #         ))
+    #     self.addStep(OutputStep(
+    #         name='tinderboxprint_script_revlink',
+    #         data=WithProperties(
+    #             'TinderboxPrint: script_revlink: %(script_repo_url)s/rev/%(script_repo_revision)s'
+    #     )))
+    #     if self.tooltool_manifest_src:
+    #         self.addStep(SetProperty(
+    #             name='set_toolsdir',
+    #             command=['bash', '-c', 'pwd'],
+    #             property='toolsdir',
+    #             workdir='scripts',
+    #         ))
+    #         self.addTooltoolStep()
+    #     self.runScript()
+    #     self.addCleanupSteps()
+    #     self.reboot()
+    #
+    # def addCleanupSteps(self):
+    #     # remove oauth.txt file, we don't wanna to leave keys lying around
+    #     if self.use_credentials_file:
+    #         self.addStep(ShellCommand(
+    #             name='rm_oauth_txt',
+    #             command=['rm', '-f', 'oauth.txt'],
+    #             workdir='.',
+    #             alwaysRun=True
+    #         ))
+    #
+    # def preRunScript(self):
+    #     if self.use_mock:
+    #         self.addStep(MockReset(
+    #             target=self.mock_target,
+    #         ))
+    #         self.addStep(MockInit(
+    #             target=self.mock_target,
+    #         ))
+    #         if self.mock_copyin_files:
+    #             for source, target in self.mock_copyin_files:
+    #                 self.addStep(ShellCommand(
+    #                     name='mock_copyin_%s' % source.replace('/', '_'),
+    #                     command=['mock_mozilla', '-r', self.mock_target,
+    #                              '--copyin', source, target],
+    #                     haltOnFailure=True,
+    #                 ))
+    #                 self.addStep(MockCommand(
+    #                     name='mock_chown_%s' % target.replace('/', '_'),
+    #                     command='chown -R mock_mozilla %s' % target,
+    #                     target=self.mock_target,
+    #                     mock=True,
+    #                     workdir='/',
+    #                     mock_args=[],
+    #                     mock_workdir_prefix=None,
+    #                 ))
+    #
+    #         self.addStep(MockInstall(
+    #             target=self.mock_target,
+    #             packages=self.mock_packages,
+    #             timeout=2700,
+    #         ))
+    #
+    # def runScript(self, env=None):
+    #     if not env:
+    #         env = self.env
+    #     self.preRunScript()
+    #     self.addStep(MockCommand(
+    #         name="run_script",
+    #         command=self.cmd,
+    #         env=env,
+    #         timeout=self.script_timeout,
+    #         maxTime=self.script_maxtime,
+    #         log_eval_func=self.log_eval_func,
+    #         workdir=".",
+    #         haltOnFailure=True,
+    #         warnOnWarnings=True,
+    #         mock=self.use_mock,
+    #         target=self.mock_target,
+    #     ))
+    #
+    #     cmd = ['bash', '-c', 'for file in `ls -1`; do cat $file; done']
+    #     if self.platform and 'win' in self.platform:
+    #         # note: prefixing 'type' command with '@' to suppress extraneous
+    #         # output
+    #         cmd = ['cmd', '/C', 'for', '%f', 'in', '(*)', 'do', '@type', '%f']
+    #
+    #     self.addStep(SetProperty(
+    #         name='set_script_properties',
+    #         command=cmd,
+    #         workdir='properties',
+    #         extract_fn=extractProperties,
+    #         alwaysRun=True,
+    #         warnOnFailure=False,
+    #         flunkOnFailure=False,
+    #     ))
+    #
+    #     if self.triggered_schedulers:
+    #         for triggered_scheduler in self.triggered_schedulers:
+    #             self.addStep(Trigger(
+    #                 schedulerNames=[triggered_scheduler],
+    #                 copy_properties=self.copy_properties,
+    #                 waitForFinish=False)
+    #             )
+    #
+    # def reboot(self):
+    #     def do_disconnect(cmd):
+    #         try:
+    #             if 'SCHEDULED REBOOT' in cmd.logs['stdio'].getText():
+    #                 return True
+    #         except:
+    #             pass
+    #         return False
+    #     if self.reboot_command:
+    #         self.addStep(DisconnectStep(
+    #             name='reboot',
+    #             flunkOnFailure=False,
+    #             warnOnFailure=False,
+    #             alwaysRun=True,
+    #             workdir='.',
+    #             description="reboot",
+    #             command=self.reboot_command,
+    #             force_disconnect=do_disconnect,
+    #             env=self.env,
+    #         ))
 
 
 class SigningScriptFactory(ScriptFactory):
@@ -5185,42 +5185,42 @@ class SigningScriptFactory(ScriptFactory):
         self.enableSigning = enableSigning
         ScriptFactory.__init__(self, **kwargs)
 
-    def runScript(self):
-
-        signing_env = None
-        if self.enableSigning:
-            token = "token"
-            nonce = "nonce"
-            self.addStep(ShellCommand(
-                command=['rm', '-f', nonce],
-                workdir='.',
-                name='rm_nonce',
-                description=['remove', 'old', 'nonce'],
-            ))
-            self.addStep(SigningServerAuthenication(
-                servers=self.signingServers,
-                server_cert=SIGNING_SERVER_CERT,
-                slavedest=token,
-                workdir='.',
-                name='download_token',
-            ))
-            # toolsdir, basedir
-            self.addStep(SetProperty(
-                name='set_toolsdir',
-                command=self.get_basedir_cmd,
-                property='toolsdir',
-                workdir='scripts',
-            ))
-            self.addStep(SetProperty(
-                name='set_basedir',
-                command=self.get_basedir_cmd,
-                property='basedir',
-                workdir='.',
-            ))
-            signing_env = self.env.copy()
-            signing_env['MOZ_SIGN_CMD'] = WithProperties(get_signing_cmd(
-                self.signingServers, self.env.get('PYTHON26')))
-            signing_env['MOZ_SIGNING_SERVERS'] = ",".join(
-                "%s:%s" % (":".join(s[3]), s[0]) for s in self.signingServers)
-
-        ScriptFactory.runScript(self, env=signing_env)
+    # def runScript(self):
+    #
+    #     signing_env = None
+    #     if self.enableSigning:
+    #         token = "token"
+    #         nonce = "nonce"
+    #         self.addStep(ShellCommand(
+    #             command=['rm', '-f', nonce],
+    #             workdir='.',
+    #             name='rm_nonce',
+    #             description=['remove', 'old', 'nonce'],
+    #         ))
+    #         self.addStep(SigningServerAuthenication(
+    #             servers=self.signingServers,
+    #             server_cert=SIGNING_SERVER_CERT,
+    #             slavedest=token,
+    #             workdir='.',
+    #             name='download_token',
+    #         ))
+    #         # toolsdir, basedir
+    #         self.addStep(SetProperty(
+    #             name='set_toolsdir',
+    #             command=self.get_basedir_cmd,
+    #             property='toolsdir',
+    #             workdir='scripts',
+    #         ))
+    #         self.addStep(SetProperty(
+    #             name='set_basedir',
+    #             command=self.get_basedir_cmd,
+    #             property='basedir',
+    #             workdir='.',
+    #         ))
+    #         signing_env = self.env.copy()
+    #         signing_env['MOZ_SIGN_CMD'] = WithProperties(get_signing_cmd(
+    #             self.signingServers, self.env.get('PYTHON26')))
+    #         signing_env['MOZ_SIGNING_SERVERS'] = ",".join(
+    #             "%s:%s" % (":".join(s[3]), s[0]) for s in self.signingServers)
+    #
+    #     ScriptFactory.runScript(self, env=signing_env)
