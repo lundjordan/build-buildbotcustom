@@ -4895,7 +4895,7 @@ class ScriptFactory(RequestSortingBuildFactory, TooltoolMixin):
                          WithProperties(
                              'python %s ' % archiver_client_path +
                              'mozharness ' +
-                             '--repo %s ' + relengapi_archiver_repo_path +
+                             '--repo %s ' % relengapi_archiver_repo_path +
                              '--rev %(revision)s ' +
                              '--destination scripts ' +
                              '--debug')],
