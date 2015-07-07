@@ -1094,6 +1094,7 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                          '--no-check-certificate --tries=10 --waitretry=3 ' +
                          'http://hg.mozilla.org/build/tools/raw-file/default/buildfarm/utils/archiver_client.py'],
                 haltOnFailure=True,
+                workdir='.',
             ))
             archiver_client_path = 'archiver_client.py'
 
