@@ -909,6 +909,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                         extra_args=extra_args,
                         use_credentials_file=True,
                         env=env,
+                        relengapi_archiver_repo_path=sourceRepoInfo['clonePath'],
+                        relengapi_archiver_release_tag=releaseTag,
                     )
                     properties['script_repo_revision'] = releaseTag
                 else:
@@ -1107,6 +1109,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                     scriptName=mh_cfg['script'],
                     extra_args=extra_args,
                     env=builder_env,
+                    relengapi_archiver_repo_path=sourceRepoInfo['clonePath'],
+                    relengapi_archiver_release_tag=releaseTag,
                 )
             else:
                 pr_pf = branchConfig['platforms']['macosx64']
@@ -1397,6 +1401,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                             '--total-chunks', str(ui_update_verify_chunks),
                             '--this-chunk', str(n)
                         ],
+                        relengapi_archiver_repo_path=sourceRepoInfo['clonePath'],
+                        relengapi_archiver_release_tag=releaseTag,
                     )
 
                     builddir = '%(prefix)s_%(this_chunk)s' % {
@@ -1728,6 +1734,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
             scriptName="scripts/bouncer_submitter.py",
             extra_args=extra_args,
             use_credentials_file=True,
+            relengapi_archiver_repo_path=sourceRepoInfo['clonePath'],
+            relengapi_archiver_release_tag=releaseTag,
         )
 
         builders.append({
