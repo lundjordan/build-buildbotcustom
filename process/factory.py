@@ -1408,14 +1408,14 @@ class MercurialBuildFactory(MozillaBuildFactory, MockMixin, TooltoolMixin):
                 gs_env = self.env.copy()
                 gs_env['PYTHONPATH'] = WithProperties(
                     '%(toolsdir)s/lib/python')
-                self.addStep(GraphServerPost(server=self.graphServer,
-                                             selector=self.graphSelector,
-                                             branch=self.graphBranch,
-                                             resultsname=self.baseName,
-                                             env=gs_env,
-                                             flunkOnFailure=False,
-                                             haltOnFailure=False,
-                                             propertiesFile="properties.json"))
+                # self.addStep(GraphServerPost(server=self.graphServer,
+                #                              selector=self.graphSelector,
+                #                              branch=self.graphBranch,
+                #                              resultsname=self.baseName,
+                #                              env=gs_env,
+                #                              flunkOnFailure=False,
+                #                              haltOnFailure=False,
+                #                              propertiesFile="properties.json"))
             else:
                 self.addStep(OutputStep(
                     name='tinderboxprint_ctors',
