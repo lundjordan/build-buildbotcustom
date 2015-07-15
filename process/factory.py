@@ -522,8 +522,7 @@ class MozillaBuildFactory(RequestSortingBuildFactory, MockMixin):
                          clobberTime=self.clobberTime
                          ))
 
-        # if self.buildSpace > 0:
-        if False:  # don't purge builds for staging work
+        if self.buildSpace > 0:
             command = ['python', 'tools/buildfarm/maintenance/purge_builds.py',
                        '-s', str(self.buildSpace)]
 
