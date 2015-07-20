@@ -56,6 +56,10 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
     # This variable is one thing that forces us into reconfiging prior to a
     # release. It should be removed as soon as nothing depends on it.
     sourceRepoInfo = releaseConfig['sourceRepositories'][sourceRepoKey]
+    # Bug 1179476 - use in gecko tree mozharness for release jobs
+    relengapi_archiver_repo_path = sourceRepoInfo['path']
+    if sourceRepoKey == "comm":
+        relengapi_archiver_repo_path = releaseConfig['sourceRepositories']['mozilla']['path']
     releaseTag = getReleaseTag(releaseConfig['baseTag'])
     # This tag is created post-signing, when we do some additional
     # config file bumps
@@ -761,6 +765,7 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                     'compare_locales_repo_path'],
                 mozharnessRepoPath=mozharness_repo_path,
                 mozharnessTag=releaseTag,
+                relengapi_archiver_release_tag=releaseTag,
                 multiLocaleScript=pf.get('multi_locale_script'),
                 multiLocaleConfig=multiLocaleConfig,
                 mozharnessMultiOptions=mozharnessMultiOptions,
@@ -773,7 +778,7 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                 mozillaDir=mozillaDir,
                 mozillaSrcDir=mozillaSrcDir,
                 enableInstaller=pf.get('enable_installer', False),
-                tooltool_manifest_src=pf.get('tooltool_manifest_src', None),
+                tooltool_manifest_src=pf.get('tooltool_manifest_src'),
                 tooltool_url_list=branchConfig.get('tooltool_url_list', []),
                 tooltool_script=pf.get('tooltool_script'),
                 use_mock=use_mock(platform),
@@ -838,9 +843,9 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                 if releaseConfig.get('l10nUsePymake', True) and \
                    platform in ('win32', 'win64'):
                     extra_args.append('--use-pymake')
-                if pf.get('tooltool_l10n_manifest_src'):
+                if pf.get('tooltool_manifest_src'):
                     extra_args.extend(['--tooltool-manifest',
-                                      pf.get('tooltool_l10n_manifest_src')])
+                                      pf.get('tooltool_manifest_src')])
                 if pf.get('tooltool_script'):
                     for script in pf['tooltool_script']:
                         extra_args.extend(['--tooltool-script', script])
@@ -909,6 +914,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                         extra_args=extra_args,
                         use_credentials_file=True,
                         env=env,
+                        relengapi_archiver_repo_path=relengapi_archiver_repo_path,
+                        relengapi_archiver_release_tag=releaseTag,
                     )
                     properties['script_repo_revision'] = releaseTag
                 else:
@@ -927,9 +934,9 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                         extra_args.append('--use-pymake')
                     if releaseConfig.get('enablePartialMarsAtBuildTime', True):
                         extra_args.append('--generate-partials')
-                    if pf.get('tooltool_l10n_manifest_src'):
+                    if pf.get('tooltool_manifest_src'):
                         extra_args.extend(['--tooltool-manifest',
-                                          pf.get('tooltool_l10n_manifest_src')])
+                                          pf.get('tooltool_manifest_src')])
                     if pf.get('tooltool_script'):
                         for script in pf['tooltool_script']:
                             extra_args.extend(['--tooltool-script', script])
@@ -1052,7 +1059,7 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                 packageSDK=True,
                 signingServers=getSigningServers(platform),
                 partialUpdates={},  # no updates for Xulrunner
-                tooltool_manifest_src=pf.get('tooltool_manifest_src', None),
+                tooltool_manifest_src=pf.get('tooltool_manifest_src'),
                 tooltool_url_list=branchConfig.get('tooltool_url_list', []),
                 tooltool_script=pf.get('tooltool_script'),
                 use_mock=use_mock(platform),
@@ -1107,6 +1114,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                     scriptName=mh_cfg['script'],
                     extra_args=extra_args,
                     env=builder_env,
+                    relengapi_archiver_repo_path=relengapi_archiver_repo_path,
+                    relengapi_archiver_release_tag=releaseTag,
                 )
             else:
                 pr_pf = branchConfig['platforms']['macosx64']
@@ -1399,6 +1408,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
                             '--this-chunk', str(n),
                             "--build-number", releaseConfig['buildNumber'],
                         ],
+                        relengapi_archiver_repo_path=relengapi_archiver_repo_path,
+                        relengapi_archiver_release_tag=releaseTag,
                     )
 
                     builddir = '%(prefix)s_%(this_chunk)s' % {
@@ -1730,6 +1741,8 @@ def generateReleaseBranchObjects(releaseConfig, branchConfig,
             scriptName="scripts/bouncer_submitter.py",
             extra_args=extra_args,
             use_credentials_file=True,
+            relengapi_archiver_repo_path=relengapi_archiver_repo_path,
+            relengapi_archiver_release_tag=releaseTag,
         )
 
         builders.append({
